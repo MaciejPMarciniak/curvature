@@ -48,7 +48,7 @@ class Curvature:
 if __name__ == '__main__':
 
     x = np.linspace(-5, 5, 1001)
-    y = 3 * (x ** 2)
+    y = (x ** 2)
     xy = list(zip(x, y))
 
     curv = Curvature(line=xy)
