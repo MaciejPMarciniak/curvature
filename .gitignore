@@ -1,2 +1,6 @@
 .idea
+.idea/workspace.xml
+.idea/misc.xml
+.idea/curvature.iml
+__pycache__/
 
