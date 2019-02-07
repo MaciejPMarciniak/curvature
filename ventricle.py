@@ -137,9 +137,9 @@ class Cohort:
             if os.path.isfile(_data_file):
                 self.df_all_cases = pd.read_csv(_data_file, header=0, index_col=0)
 
-
             if not os.path.exists(_data_file):
                 self._build_data_set(to_file=True)
+
             self.biomarkers = self.df_all_cases.columns
 
             # if self.df_all_cases is None:
@@ -154,6 +154,7 @@ class Cohort:
             if not os.path.exists(_master_table_file):
                 self._build_master_table(to_file=True)
 
+            self.biomarkers = list(set([col[3:] for col in self.df_master.columns]))
             # if self.df_master is None:
             #     self.df_master = pd.read_csv(_master_table_file, header=0, index_col=0)
 
@@ -255,7 +256,7 @@ class Cohort:
 
 if __name__ == '__main__':
 
-    for _view in ['2C']:
+    for _view in ['4C']:
 
         source = os.path.join('/home/mat/Python/data/curvature')
         target_path = os.path.join('/home/mat/Python/data/curvature/')
@@ -265,4 +266,4 @@ if __name__ == '__main__':
         # cohort.get_extemes(32)
         # cohort.plot_curvatures('asf')
         # cohort.plot_curvatures()
-        cohort.plot_distributions(plot_master=True)
+        cohort.plot_distributions(plot_data=True)
