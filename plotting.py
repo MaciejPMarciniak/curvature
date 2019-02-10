@@ -180,12 +180,11 @@ class PlottingDistributions:
 
     def plot_distribution(self, show=False):
 
-        f, axes = plt.subplots(1, 3, figsize=(10, 4))
+        f, axes = plt.subplots(1, 2, figsize=(10, 6))
         sns.despine(left=True)
         sns.kdeplot(self.df[self.series], shade=True, color='b', ax=axes[0])
 
         sns.distplot(self.df[self.series], kde=False, rug=True, color='r', bins=None, ax=axes[1])
-        sns.swarmplot(self.df[self.series], color='g', ax=axes[2])
         series_max = max(self.df[self.series])
         xlim = (min(self.df[self.series]) - 0.1 * series_max, series_max + 0.1 * series_max)
 
@@ -194,7 +193,6 @@ class PlottingDistributions:
 
         axes[0].set_title('Kernel density distribution')
         axes[1].set_title('Histogram')
-        axes[2].set_title('Swarm distribution')
         sns.set()
         plt.tight_layout()
 
@@ -245,3 +243,15 @@ class PlottingDistributions:
             plt.show()
         self._save_plot(series1 + '_vs_' + series2 + '_' + kind + '.png', g)
 
+    def plot_with_labels(self, series1, series2, show=False):
+
+        print(series1)
+        print(series2)
+        g = sns.scatterplot(x=series1, y=series2, data=self.df, hue='label')
+        g.set_title('Basal septal hypertrophy classification')
+        sns.set()
+        plt.tight_layout()
+
+        if show:
+            plt.show()
+        self._save_plot(series1 + '_vs_' + series2 + '_labeled.png', g.figure)

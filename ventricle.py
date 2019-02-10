@@ -117,6 +117,7 @@ class Cohort:
         self.df_master = None
         self.curv = None
         self.biomarkers = None
+        self.master_table_name = None
 
     def _set_paths_and_files(self, view='4C', output_path=''):
         self.view = view
@@ -131,7 +132,7 @@ class Cohort:
             os.mkdir(directory)
         return directory
 
-    def _try_get_data(self, data=False, master_table=False):
+    def _try_get_data(self, data=False, master_table=False, table_name='master_table.csv'):
 
         if data:
             _data_file = os.path.join(self.output_path, self.view, 'output_EDA', self.output)
@@ -145,7 +146,8 @@ class Cohort:
             self.biomarkers = self.df_all_cases.columns
 
         if master_table:
-            _master_table_file = os.path.join(self.output_path, 'master_table.csv')
+
+            _master_table_file = os.path.join(self.output_path, self.master_table_name)
 
             if os.path.isfile(_master_table_file):
                 self.df_master = pd.read_csv(_master_table_file, header=0, index_col=0)
@@ -153,7 +155,7 @@ class Cohort:
             if not os.path.exists(_master_table_file):
                 self._build_master_table(to_file=True)
 
-            self.biomarkers = list(set([col[3:] for col in self.df_master.columns]))
+            self.biomarkers = list(set([col[3:] for col in self.df_master.columns if col != 'label']))
 
         if not (data or master_table):
             exit('No data has been created, set the data or master_table parameter to True')
@@ -223,32 +225,44 @@ class Cohort:
                                           ventricle=ven)
             plot_tool.plot_all_frames(coloring_scheme=coloring_scheme)
 
-    def plot_distributions(self, plot_data=False, plot_master=False):
+    def _plot_data(self):
 
+        if self.df_all_cases is None:
+            self._try_get_data(data=True)
+
+        _view_output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_EDA'))
+
+        plot_tool = PlottingDistributions(self.df_all_cases, '', _view_output_path)
+        for col in self.biomarkers:
+            plot_tool.set_series(col)
+            plot_tool.plot_distribution()
+
+        col_combs = combinations(self.biomarkers, 2)
+        for comb in col_combs:
+            plot_tool.plot_2_distributions(comb[0], comb[1], kind='kde')
+
+    def _plot_master(self):
+
+        if self.df_master is None:
+            self._try_get_data(master_table=True)
+
+        _master_output_path = self._check_directory(os.path.join(self.output_path, 'output_master'))
+        master_plot_tool = PlottingDistributions(self.df_master, '', _master_output_path)
+
+        for col in self.biomarkers:
+            print(col)
+            if self.master_table_name != 'master_table.csv':
+                master_plot_tool.plot_with_labels('4C_' + col, '3C_' + col)
+            else:
+                master_plot_tool.plot_2_distributions('4C_' + col, '3C_' + col, kind='kde')
+
+    def plot_distributions(self, plot_data=False, plot_master=False, table_name=None):
         if plot_data:
-            if self.df_all_cases is None:
-                self._try_get_data(data=True)
-
-            _view_output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_EDA'))
-
-            plot_tool = PlottingDistributions(self.df_all_cases, '', _view_output_path)
-            for col in self.biomarkers:
-                plot_tool.set_series(col)
-                plot_tool.plot_distribution()
-
-            col_combs = combinations(self.biomarkers, 2)
-            for comb in col_combs:
-                plot_tool.plot_2_distributions(comb[0], comb[1], kind='kde')
+            self._plot_data()
 
         if plot_master:
-            if self.df_master is None:
-                self._try_get_data(master_table=True)
-
-            _master_output_path = self._check_directory(os.path.join(self.output_path, 'output_master'))
-            master_plot_tool = PlottingDistributions(self.df_master, '', _master_output_path)
-
-            for col in self.biomarkers:
-                master_plot_tool.plot_2_distributions('4C_'+col, '3C_'+col, kind='kde')
+            self.master_table_name = table_name
+            self._plot_master()
 
     def get_extemes(self, n=30):
 
@@ -279,5 +293,5 @@ if __name__ == '__main__':
         # cohort.get_extemes(32)
         # cohort.plot_curvatures('asf')
         # cohort.plot_curvatures()
-        # cohort.plot_distributions(plot_data=True)
-        cohort.print_names_and_ids(to_file=True)
+        cohort.plot_distributions(plot_master=True, table_name='master_table_with_labels.csv')
+        # cohort.print_names_and_ids(to_file=True)
