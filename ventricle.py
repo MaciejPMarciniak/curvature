@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import glob
 import os
+import csv
 from curvature import Curvature
 from plotting import PlottingCurvature, PlottingDistributions
 import matplotlib.pyplot as plt
@@ -121,7 +122,8 @@ class Cohort:
         self.view = view
         self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
         self.files.sort()
-        self.output_path = self._check_directory(output_path)
+        if not output_path=='':
+            self.output_path = self._check_directory(output_path)
 
     @staticmethod
     def _check_directory(directory):
@@ -142,9 +144,6 @@ class Cohort:
 
             self.biomarkers = self.df_all_cases.columns
 
-            # if self.df_all_cases is None:
-            #     self.df_all_cases = pd.read_csv(_data_file, header=0, index_col=0)
-
         if master_table:
             _master_table_file = os.path.join(self.output_path, 'master_table.csv')
 
@@ -155,8 +154,6 @@ class Cohort:
                 self._build_master_table(to_file=True)
 
             self.biomarkers = list(set([col[3:] for col in self.df_master.columns]))
-            # if self.df_master is None:
-            #     self.df_master = pd.read_csv(_master_table_file, header=0, index_col=0)
 
         if not (data or master_table):
             exit('No data has been created, set the data or master_table parameter to True')
@@ -195,6 +192,22 @@ class Cohort:
             self.df_master = self.df_master.merge(list_of_dfs[df_i], right_index=True, left_index=True, sort=True)
         if to_file:
             self.df_master.to_csv(os.path.join(self.output_path, 'master_table.csv'))
+
+    def print_names_and_ids(self, to_file=False, views=('4C', '3C', '2C')):
+
+        for view in views:
+            self._set_paths_and_files(view=view)
+            names = {}
+            for curv_file in self.files:
+                print('case: {}'.format(curv_file))
+                ven = Ventricle(curv_file, view=self.view)
+                case_name = curv_file.split('/')[-1].split('.')[0]  # get case name without path and extension
+                names[case_name] = ven.id
+            if to_file:
+                with open(os.path.join(self.output_path, 'Names_IDs_' + self.view + '.csv'), 'w') as f:
+                    w = csv.DictWriter(f, names.keys())
+                    w.writeheader()
+                    w.writerow(names)
 
     def plot_curvatures(self, coloring_scheme='curvature'):
 
@@ -266,4 +279,5 @@ if __name__ == '__main__':
         # cohort.get_extemes(32)
         # cohort.plot_curvatures('asf')
         # cohort.plot_curvatures()
-        cohort.plot_distributions(plot_data=True)
+        # cohort.plot_distributions(plot_data=True)
+        cohort.print_names_and_ids(to_file=True)
