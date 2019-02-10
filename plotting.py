@@ -188,7 +188,7 @@ class PlottingDistributions:
         series_max = max(self.df[self.series])
         xlim = (min(self.df[self.series]) - 0.1 * series_max, series_max + 0.1 * series_max)
 
-        for i in range(3):
+        for i in range(2):
             axes[i].set_xlim(xlim)
 
         axes[0].set_title('Kernel density distribution')
@@ -245,8 +245,6 @@ class PlottingDistributions:
 
     def plot_with_labels(self, series1, series2, show=False):
 
-        print(series1)
-        print(series2)
         g = sns.scatterplot(x=series1, y=series2, data=self.df, hue='label')
         g.set_title('Basal septal hypertrophy classification')
         sns.set()

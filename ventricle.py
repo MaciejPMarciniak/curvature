@@ -117,7 +117,7 @@ class Cohort:
         self.df_master = None
         self.curv = None
         self.biomarkers = None
-        self.master_table_name = None
+        self.table_name = None
 
     def _set_paths_and_files(self, view='4C', output_path=''):
         self.view = view
@@ -132,22 +132,21 @@ class Cohort:
             os.mkdir(directory)
         return directory
 
-    def _try_get_data(self, data=False, master_table=False, table_name='master_table.csv'):
+    def _try_get_data(self, data=False, master_table=False):
 
         if data:
-            _data_file = os.path.join(self.output_path, self.view, 'output_EDA', self.output)
+            _data_file = os.path.join(self.output_path, self.view, 'output_EDA', self.table_name)
 
             if os.path.isfile(_data_file):
                 self.df_all_cases = pd.read_csv(_data_file, header=0, index_col=0)
 
             if not os.path.exists(_data_file):
                 self._build_data_set(to_file=True)
-
-            self.biomarkers = self.df_all_cases.columns
+            self.biomarkers = list(self.df_all_cases.columns)
 
         if master_table:
 
-            _master_table_file = os.path.join(self.output_path, self.master_table_name)
+            _master_table_file = os.path.join(self.output_path, self.table_name)
 
             if os.path.isfile(_master_table_file):
                 self.df_master = pd.read_csv(_master_table_file, header=0, index_col=0)
@@ -155,7 +154,10 @@ class Cohort:
             if not os.path.exists(_master_table_file):
                 self._build_master_table(to_file=True)
 
-            self.biomarkers = list(set([col[3:] for col in self.df_master.columns if col != 'label']))
+            self.biomarkers = list(set([col[3:] for col in self.df_master.columns]))
+
+        if 'label' in self.biomarkers:
+            self.biomarkers.remove('label')
 
         if not (data or master_table):
             exit('No data has been created, set the data or master_table parameter to True')
@@ -239,7 +241,10 @@ class Cohort:
 
         col_combs = combinations(self.biomarkers, 2)
         for comb in col_combs:
-            plot_tool.plot_2_distributions(comb[0], comb[1], kind='kde')
+            if self.table_name != 'master_table.csv':
+                plot_tool.plot_with_labels(comb[0], comb[1])
+            else:
+                plot_tool.plot_2_distributions(comb[0], comb[1], kind='kde')
 
     def _plot_master(self):
 
@@ -251,18 +256,33 @@ class Cohort:
 
         for col in self.biomarkers:
             print(col)
-            if self.master_table_name != 'master_table.csv':
+            if self.table_name != 'master_table.csv':
                 master_plot_tool.plot_with_labels('4C_' + col, '3C_' + col)
             else:
                 master_plot_tool.plot_2_distributions('4C_' + col, '3C_' + col, kind='kde')
 
     def plot_distributions(self, plot_data=False, plot_master=False, table_name=None):
+
+        self.table_name = table_name
+
         if plot_data:
             self._plot_data()
 
         if plot_master:
-            self.master_table_name = table_name
             self._plot_master()
+
+    def get_statistics(self):
+
+        if self.df_master is None:
+            self.table_name = 'master_table_with_labels.csv'
+            self._try_get_data(master_table=True)
+
+        df_stats = pd.DataFrame()
+        for lab in range(3):
+            df_stats['mean_'+str(lab)] = self.df_master[self.df_master['label'] == lab].mean()
+        for lab in range(3):
+            df_stats['std_' + str(lab)] = self.df_master[self.df_master['label'] == lab].std()
+        df_stats.to_csv(os.path.join(self.output_path, 'master_stats.csv'))
 
     def get_extemes(self, n=30):
 
@@ -293,5 +313,6 @@ if __name__ == '__main__':
         # cohort.get_extemes(32)
         # cohort.plot_curvatures('asf')
         # cohort.plot_curvatures()
-        cohort.plot_distributions(plot_master=True, table_name='master_table_with_labels.csv')
+        cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
         # cohort.print_names_and_ids(to_file=True)
+        # cohort.get_statistics()
