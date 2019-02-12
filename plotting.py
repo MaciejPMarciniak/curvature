@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 from matplotlib import cm
+import matplotlib as mpl
 import seaborn as sns
 
 
@@ -18,7 +19,9 @@ class PlottingCurvature:
         self.id = ventricle.id
         self.number_of_frames = ventricle.number_of_frames
         self.curvature = ventricle.ventricle_curvature
+        self.mean_curvature = ventricle.mean_curvature_over_time
         self.c_normalized = ventricle.vc_normalized
+        self.mc_normalized = ventricle.mc_normalized
         self.es_frame, self.ed_frame = ventricle.es_frame, ventricle.ed_frame
         self.es_apex = self.data[self.es_frame, ventricle.apex*2:ventricle.apex*2+2]
         self.ed_apex = self.data[self.ed_frame, ventricle.apex*2:ventricle.apex*2+2]
@@ -74,7 +77,8 @@ class PlottingCurvature:
         fig.savefig(fname=os.path.join(self.output_path, '{}_frame_{}_with_curv'.format(self.id, frame_number)))
         fig.close()
 
-    def plot_all_frames(self, coloring_scheme=None):
+    def plot_mean_curvature(self):
+
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(13, 8))
 
         ax0.set_title('Case {}, full cycle'.format(self.id))
@@ -84,33 +88,102 @@ class PlottingCurvature:
         ax0.set_ylabel('Long axis')
 
         ax1.set_title('Geometric point-to-point curvature')
-        ax1.axhline(y=0, c='r', ls='--')
-        ax1.set_ylim(-0.08, 0.17)
-        ax1.vlines(self.ed_apex_id+1, 0, max(self.curvature[:, self.ed_apex_id]), color='k', linestyles='-.', lw=1)
+        ax1.axhline(y=0, c='k', ls='-.', lw=2)
+        ax1.set_xlim(-1, len(self.mc_normalized) + 2)
+        ax1.set_ylim(-0.07, 0.13)
+        ax1.vlines(self.ed_apex_id + 1, 0, self.mean_curvature[self.ed_apex_id], color='k', linestyles='-.', lw=1)
+        #  Added 1 to ed_apex_id because the plot is moved by one (due to lack of curvature at end points)
+        ax1.set_xlabel('Point number')
+        ax1.set_ylabel('Curvature $[m^{-1}]$')
+
+        ext = 'curvature'
+
+        legend_elements0 = \
+            [Line2D([0], [0], c='w', marker='d', markerfacecolor='k', markersize=9, label='Apex at \'ED\'')]
+        legend_elements1 = [Line2D([0], [0], c='b', lw=2, label='Negative curvature'),
+                            Line2D([0], [0], c='r', lw=2, label='Positive curvature'),
+                            Line2D([0], [0], c='k', ls='-.', label='Apical point')]
+
+        for frame_number in range(self.number_of_frames):
+
+            xx, yy, _ = self._get_translated_element(frame_number, self.ed_apex)
+            norm_curv = self.append_missing_curvature_values(self.c_normalized[self.ed_frame])
+
+            color_tr = cm.coolwarm(norm_curv)
+            color_tr[:, -1] = 0.3
+            color = cm.seismic(norm_curv)
+            size = 10
+            ax0.scatter(xx, yy, c=color, edgecolor=color_tr, marker='o', s=size)
+
+        curv = self.append_missing_curvature_values(self.mean_curvature)
+        points = np.array([np.linspace(0, len(curv) - 1, len(curv)), curv]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        norm = plt.Normalize(-0.125, 0.125)  # Arbitrary values, seem to correspond to the ventricle image
+
+        # norm_curv = self.append_missing_curvature_values(self.mc_normalized)
+        lc = LineCollection(segments, cmap='seismic', alpha=0.4, norm=norm)
+        lc.set_array(curv)
+        lc.set_linewidth(5)
+        ax1.add_collection(lc)
+
+        ax0.scatter(0, 0, c='k', marker='d', s=80, alpha=1, label='Apex at ED')
+        ax0.legend(handles=legend_elements0, loc='upper left', title='Cardiac cycle')
+        ax1.legend(handles=legend_elements1, loc='upper right', title='Curvature')
+        fig.tight_layout()
+        fig.savefig(fname=os.path.join(self.output_path, '{}_mean_colour_by_{}'.format(self.id, ext)))
+        plt.close()
+
+    def plot_all_frames(self, coloring_scheme=None):
+        fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
+
+        # TODO: Fix the representatives drawing
+
+        if self.id == 'amb3152017':
+            ax0.set_title('Healthy')
+            ax0.set_ylim(-85, 5)
+        elif self.id == 'CAS0214':
+            ax0.set_title('HTN without BSH')
+            ax0.set_ylim(-95, 5)
+        elif self.id == 'DPJMA0472':
+            ax0.set_title('HTN with BSH')
+            ax0.set_ylim(-105, 5)
+        else:
+            ax0.set_title('Case {}, full cycle'.format(self.id))
+            ax0.set_ylim(-85, 5)
+
+        ax0.set_xlim(-30, 55)
+        ax0.set_xlabel('Short axis $[mm]$')
+        ax0.set_ylabel('Long axis $[mm]$')
+
+        ax1.set_title('Geometric point-to-point curvature')
+        ax1.axhline(y=0, c='k', ls='-.', lw=1)
+        ax1.set_ylim(-0.07, 0.14)
+
+        # ax1.vlines(self.ed_apex_id+1, 0, max(self.curvature[:, self.ed_apex_id]), color='k', linestyles='-.', lw=1)
         #  Added 1 to ed_apex_id because the plot is moved by one (due to lack of curvature at end points)
         ax1.set_xlabel('Point number')
         ax1.set_ylabel('Curvature $[m^{-1}]$')
 
         if coloring_scheme == 'curvature':
             xx, yy, _ = self._get_translated_element(self.ed_frame, self.ed_apex)
+            yy *= -1
             curv = self.append_missing_curvature_values(self.curvature[self.ed_frame])
             ax0.plot(xx, yy, 'k--', lw=3)
             ax1.plot(curv, '--', c='black', lw=2)
 
             xx, yy, _ = self._get_translated_element(self.es_frame, self.ed_apex)
+            yy *= -1
             curv = self.append_missing_curvature_values(self.curvature[self.es_frame])
             ax0.plot(xx, yy, 'k:', lw=3)
             ax1.plot(curv, ':', c='black', lw=2)
 
             legend_elements0 = \
-                [Line2D([0], [0], c='k', ls='--', lw=2, label='\'End diastole\''),
-                 Line2D([0], [0], c='k', ls=':', lw=2, label='\'End systole\''),
-                 Line2D([0], [0], c='w', marker='d', markerfacecolor='k', markersize=9, label='Apex at \'ED\'')]
-            legend_elements1 = [Line2D([0], [0], c='k', ls='--', lw=2, label='\'End diastole\''),
-                                Line2D([0], [0], c='k', ls=':', lw=2, label='\'End systole\''),
+                [Line2D([0], [0], c='k', ls='--', lw=2, label='End diastole'),
+                 Line2D([0], [0], c='k', ls=':', lw=2, label='End systole')]
+            legend_elements1 = [Line2D([0], [0], c='k', ls='--', lw=2, label='End diastole'),
+                                Line2D([0], [0], c='k', ls=':', lw=2, label='End systole'),
                                 Line2D([0], [0], c='b', lw=2, label='Negative curvature'),
-                                Line2D([0], [0], c='r', lw=2, label='Positive curvature'),
-                                Line2D([0], [0], c='k', ls='-.', label='Apical point')]
+                                Line2D([0], [0], c='r', lw=2, label='Positive curvature')]
         else:
             legend_elements0 = \
                 [Line2D([0], [0], c='b', lw=2, label='Beginnning (end diastole)'),
@@ -127,6 +200,7 @@ class PlottingCurvature:
         for frame_number in range(self.number_of_frames):
 
             xx, yy, _ = self._get_translated_element(frame_number, self.ed_apex)
+            yy *= -1
             curv = self.append_missing_curvature_values(self.curvature[frame_number])
             norm_curv = self.append_missing_curvature_values(self.c_normalized[self.ed_frame])
             if coloring_scheme == 'curvature':
@@ -135,7 +209,7 @@ class PlottingCurvature:
                 color_tr[:, -1] = 0.3
                 color = cm.seismic(norm_curv)
                 size = 10
-                ax0.scatter(xx, yy, c=color, edgecolor=color_tr, marker='o', s=size)
+                ax0.scatter(xx, yy, c=color_tr, edgecolor=color, marker='o', s=size)
 
                 points = np.array([np.linspace(0, len(curv)-1, len(curv)), curv]).T.reshape(-1, 1, 2)
                 segments = np.concatenate([points[:-1], points[1:]], axis=1)
@@ -153,10 +227,16 @@ class PlottingCurvature:
                 ax1.plot(curv, c=color_tr, lw=2)
                 ext = 'frame'
 
-        ax0.scatter(0, 0, c='k', marker='d', s=80, alpha=1, label='Apex at ED')
-        ax0.legend(handles=legend_elements0, loc='upper left', title='Cardiac cycle')
+        # ax0.scatter(0, 0, c='k', marker='d', s=80, alpha=1, label='Apex at ED')
+        ax0.legend(handles=legend_elements0, loc='lower left', title='Cardiac cycle')
         ax1.legend(handles=legend_elements1, loc='upper right', title='Curvature')
-        fig.tight_layout()
+
+        norm = mpl.colors.Normalize(vmin=curv.min(), vmax=curv.max())
+        cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.seismic)
+        cmap.set_array([])
+        fig.colorbar(cmap)
+        fig.suptitle('Geometric curvature in the trace of LV')
+        # fig.tight_layout()
         fig.savefig(fname=os.path.join(self.output_path, '{}_colour_by_{}'.format(self.id, ext)))
         plt.close()
 
@@ -245,11 +325,13 @@ class PlottingDistributions:
 
     def plot_with_labels(self, series1, series2, show=False):
 
-        g = sns.scatterplot(x=series1, y=series2, data=self.df, hue='label')
-        g.set_title('Basal septal hypertrophy classification')
+        lm = sns.lmplot(x=series1, y=series2, data=self.df, hue='label', palette='bright',
+                        markers=['d', 'x', 'o']).fig
+
+        lm.suptitle('Basal septal hypertrophy classification')
         sns.set()
         plt.tight_layout()
 
         if show:
             plt.show()
-        self._save_plot(series1 + '_vs_' + series2 + '_labeled.png', g.figure)
+        self._save_plot(series1 + '_vs_' + series2 + '_labeled.png', lm)

@@ -21,14 +21,17 @@ class Ventricle:
         self.ed_frame = 0
         self.apex = 0
         self.ventricle_curvature = []
-        self.vc_normalized = []  # ventricle_curvature normalized
+        self.mean_curvature_over_time = []
         self.apices = []
+
         self.data = self._read_echopac_output()
         self.biomarkers = pd.DataFrame(index=[self.id])
         self.get_curvature_per_frame()
-        self.get_normalized_curvature()
+        self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)  # ventricle_curvature normalized
         self.find_apices()
         self.find_ed_and_es_frame()
+        self.get_mean_curvature_over_time()
+        self.mc_normalized = self.get_normalized_curvature(self.mean_curvature_over_time)
 
     def _read_echopac_output(self):
         with open(self.case_name) as f:
@@ -62,6 +65,10 @@ class Ventricle:
             self.ventricle_curvature.append(curva.calculate_curvature(gap=0))
         self.ventricle_curvature = np.array(self.ventricle_curvature)
 
+    def get_mean_curvature_over_time(self):
+
+        self.mean_curvature_over_time = np.mean(self.ventricle_curvature, axis=0)
+
     def find_apices(self):
         for frame in range(self.number_of_frames):
             # self.apices.append(np.argmax(self.ventricle_curvature[frame]))  # Maximum curvature in given frame
@@ -70,9 +77,9 @@ class Ventricle:
         self.apex = values[np.argmax(counts)]  # Lowest point in all frames
         # self.apex = self.apices[self.ed_frame]  # Lowest point at end diastole
 
-    def get_normalized_curvature(self):
+    def get_normalized_curvature(self, curvature):
         # Empirically established values. Useful for coloring, where values cannot be negative.
-        self.vc_normalized = [(single_curvature+0.125)*4 for single_curvature in self.ventricle_curvature]
+        return [(single_curvature+0.125)*4 for single_curvature in curvature]
 
     def get_biomarkers(self):
 
@@ -213,10 +220,13 @@ class Cohort:
                     w.writeheader()
                     w.writerow(names)
 
-    def plot_curvatures(self, coloring_scheme='curvature'):
+    def plot_curvatures(self, coloring_scheme='curvature', plot_mean=False):
 
         _source_path = os.path.join(self.source_path, self.view)
-        _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature'))
+        if plot_mean:
+            _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature', 'mean'))
+        else:
+            _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature'))
 
         for case in self.files:
             ven = Ventricle(case_name=case, view=self.view)
@@ -225,7 +235,10 @@ class Cohort:
             plot_tool = PlottingCurvature(source=_source_path,
                                           output_path=_output_path,
                                           ventricle=ven)
-            plot_tool.plot_all_frames(coloring_scheme=coloring_scheme)
+            if plot_mean:
+                plot_tool.plot_mean_curvature()
+            else:
+                plot_tool.plot_all_frames(coloring_scheme=coloring_scheme)
 
     def _plot_data(self):
 
@@ -284,6 +297,15 @@ class Cohort:
             df_stats['std_' + str(lab)] = self.df_master[self.df_master['label'] == lab].std()
         df_stats.to_csv(os.path.join(self.output_path, 'master_stats.csv'))
 
+    def save_curvatures(self):
+
+        _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature', 'curvatures'))
+
+        for case in self.files:
+            ven = Ventricle(case_name=case, view=self.view)
+            print(ven.id)
+            pd.DataFrame(ven.ventricle_curvature).to_csv(os.path.join(_output_path, ven.id+'.csv'))
+
     def get_extemes(self, n=30):
 
         self._try_get_data(data=True)
@@ -303,16 +325,30 @@ class Cohort:
 
 if __name__ == '__main__':
 
-    for _view in ['4C']:
+    source = os.path.join('/home/mat/Python/data/curvature')
+    target_path = os.path.join('/home/mat/Python/data/curvature/')
 
-        source = os.path.join('/home/mat/Python/data/curvature')
-        target_path = os.path.join('/home/mat/Python/data/curvature/')
+    representatives = ('RV_4C.CSV', 'CAS0214_4C.CSV', 'DPJMA0472.CSV')
+
+    for _view in ['4C']:
 
         cohort = Cohort(source_path=source, view=_view, output_path=target_path)
 
         # cohort.get_extemes(32)
         # cohort.plot_curvatures('asf')
-        # cohort.plot_curvatures()
-        cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
+        # cohort.plot_curvatures(coloring_scheme='curvature')
+        cohort.save_curvatures()
+        # cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
         # cohort.print_names_and_ids(to_file=True)
         # cohort.get_statistics()
+
+    # _view = '4C'
+    # case_name = os.path.join(source, _view, 'AFI0442_4C.CSV')
+    # ven = Ventricle(case_name, view=_view)
+    # plot_tool = PlottingCurvature(source=source, output_path=target_path, ventricle=ven)
+    # plot_tool.plot_representatives(representatives)
+    # plot_tool.plot_mean_curvature()
+    #
+    # print(ven.ventricle_curvature.shape)
+    # print(ven.number_of_points)
+    # print(ven.number_of_frames)
