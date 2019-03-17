@@ -50,7 +50,7 @@ class Curvature:
         fig, _ = plt.subplots(figsize=(8, 7))
         _.plot(self.curvature, 'r-', lw=5)
         _.set_title('Curvature of {} points'.format(len(self.curvature)))
-        fig.savefig('Curvature')
+        fig.savefig('Curvature.png')
         return _
 
 
