@@ -41,7 +41,7 @@ class PlottingCurvature:
         return x_centered, y_centered, (x_ref, y_ref)
 
     @staticmethod
-    def append_missing_curvature_values(curve):
+    def _append_missing_curvature_values(curve):
         return np.concatenate([[curve[0]], curve, [curve[-1]]])
 
     def plot_single_frame(self, frame_number=0):
@@ -60,7 +60,7 @@ class PlottingCurvature:
     def plot_single_frame_with_curvature(self, frame_number=0):
 
         xx, yy, _ = self._get_translated_element(frame_number)
-        curv = self.append_missing_curvature_values(self.c_normalized[frame_number])
+        curv = self._append_missing_curvature_values(self.c_normalized[frame_number])
 
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(13, 8))
 
@@ -107,7 +107,7 @@ class PlottingCurvature:
         for frame_number in range(self.number_of_frames):
 
             xx, yy, _ = self._get_translated_element(frame_number, self.ed_apex)
-            norm_curv = self.append_missing_curvature_values(self.c_normalized[self.ed_frame])
+            norm_curv = self._append_missing_curvature_values(self.c_normalized[self.ed_frame])
 
             color_tr = cm.coolwarm(norm_curv)
             color_tr[:, -1] = 0.3
@@ -115,12 +115,12 @@ class PlottingCurvature:
             size = 10
             ax0.scatter(xx, yy, c=color, edgecolor=color_tr, marker='o', s=size)
 
-        curv = self.append_missing_curvature_values(self.mean_curvature)
+        curv = self._append_missing_curvature_values(self.mean_curvature)
         points = np.array([np.linspace(0, len(curv) - 1, len(curv)), curv]).T.reshape(-1, 1, 2)
         segments = np.concatenate([points[:-1], points[1:]], axis=1)
         norm = plt.Normalize(-0.125, 0.125)  # Arbitrary values, seem to correspond to the ventricle image
 
-        # norm_curv = self.append_missing_curvature_values(self.mc_normalized)
+        # norm_curv = self._append_missing_curvature_values(self.mc_normalized)
         lc = LineCollection(segments, cmap='seismic', alpha=0.4, norm=norm)
         lc.set_array(curv)
         lc.set_linewidth(5)
@@ -136,20 +136,8 @@ class PlottingCurvature:
     def plot_all_frames(self, coloring_scheme=None):
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
 
-        # TODO: Fix the representatives drawing
-
-        if self.id == 'amb3152017':
-            ax0.set_title('Healthy')
-            ax0.set_ylim(-85, 5)
-        elif self.id == 'CAS0214':
-            ax0.set_title('HTN without BSH')
-            ax0.set_ylim(-95, 5)
-        elif self.id == 'DPJMA0472':
-            ax0.set_title('HTN with BSH')
-            ax0.set_ylim(-105, 5)
-        else:
-            ax0.set_title('Case {}, full cycle'.format(self.id))
-            ax0.set_ylim(-85, 5)
+        ax0.set_title('Case {}, full cycle'.format(self.id))
+        ax0.set_ylim(-85, 5)
 
         ax0.set_xlim(-30, 55)
         ax0.set_xlabel('Short axis $[mm]$')
@@ -167,13 +155,13 @@ class PlottingCurvature:
         if coloring_scheme == 'curvature':
             xx, yy, _ = self._get_translated_element(self.ed_frame, self.ed_apex)
             yy *= -1
-            curv = self.append_missing_curvature_values(self.curvature[self.ed_frame])
+            curv = self._append_missing_curvature_values(self.curvature[self.ed_frame])
             ax0.plot(xx, yy, 'k--', lw=3)
             ax1.plot(curv, '--', c='black', lw=2)
 
             xx, yy, _ = self._get_translated_element(self.es_frame, self.ed_apex)
             yy *= -1
-            curv = self.append_missing_curvature_values(self.curvature[self.es_frame])
+            curv = self._append_missing_curvature_values(self.curvature[self.es_frame])
             ax0.plot(xx, yy, 'k:', lw=3)
             ax1.plot(curv, ':', c='black', lw=2)
 
@@ -201,8 +189,8 @@ class PlottingCurvature:
 
             xx, yy, _ = self._get_translated_element(frame_number, self.ed_apex)
             yy *= -1
-            curv = self.append_missing_curvature_values(self.curvature[frame_number])
-            norm_curv = self.append_missing_curvature_values(self.c_normalized[self.ed_frame])
+            curv = self._append_missing_curvature_values(self.curvature[frame_number])
+            norm_curv = self._append_missing_curvature_values(self.c_normalized[self.ed_frame])
             if coloring_scheme == 'curvature':
 
                 color_tr = cm.coolwarm(norm_curv)

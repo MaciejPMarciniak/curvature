@@ -29,7 +29,7 @@ class Ventricle:
         self.get_curvature_per_frame()
         self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)  # ventricle_curvature normalized
         self.find_apices()
-        self.find_ed_and_es_frame()
+        self._find_ed_and_es_frame()
         self.get_mean_curvature_over_time()
         self.mc_normalized = self.get_normalized_curvature(self.mean_curvature_over_time)
 
@@ -51,7 +51,7 @@ class Ventricle:
     def _plane_area(x, y):
         return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
-    def find_ed_and_es_frame(self):
+    def _find_ed_and_es_frame(self):
         areas = np.zeros(self.number_of_frames)
         for frame in range(self.number_of_frames):
             x, y = self.data[frame, ::2], self.data[frame, 1::2]
@@ -120,6 +120,7 @@ class Cohort:
         self.output = output
         self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
         self.files.sort()
+        
         self.df_all_cases = None
         self.df_master = None
         self.curv = None
@@ -204,6 +205,40 @@ class Cohort:
         if to_file:
             self.df_master.to_csv(os.path.join(self.output_path, 'master_table.csv'))
 
+    def _plot_master(self):
+
+        if self.df_master is None:
+            self._try_get_data(master_table=True)
+
+        _master_output_path = self._check_directory(os.path.join(self.output_path, 'output_master'))
+        master_plot_tool = PlottingDistributions(self.df_master, '', _master_output_path)
+
+        for col in self.biomarkers:
+            print(col)
+            if self.table_name != 'master_table.csv':
+                master_plot_tool.plot_with_labels('4C_' + col, '3C_' + col)
+            else:
+                master_plot_tool.plot_2_distributions('4C_' + col, '3C_' + col, kind='kde')
+
+    def _plot_data(self):
+
+        if self.df_all_cases is None:
+            self._try_get_data(data=True)
+
+        _view_output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_EDA'))
+
+        plot_tool = PlottingDistributions(self.df_all_cases, '', _view_output_path)
+        for col in self.biomarkers:
+            plot_tool.set_series(col)
+            plot_tool.plot_distribution()
+
+        col_combs = combinations(self.biomarkers, 2)
+        for comb in col_combs:
+            if self.table_name != 'master_table.csv':
+                plot_tool.plot_with_labels(comb[0], comb[1])
+            else:
+                plot_tool.plot_2_distributions(comb[0], comb[1], kind='kde')
+
     def print_names_and_ids(self, to_file=False, views=('4C', '3C', '2C')):
 
         for view in views:
@@ -239,40 +274,6 @@ class Cohort:
                 plot_tool.plot_mean_curvature()
             else:
                 plot_tool.plot_all_frames(coloring_scheme=coloring_scheme)
-
-    def _plot_data(self):
-
-        if self.df_all_cases is None:
-            self._try_get_data(data=True)
-
-        _view_output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_EDA'))
-
-        plot_tool = PlottingDistributions(self.df_all_cases, '', _view_output_path)
-        for col in self.biomarkers:
-            plot_tool.set_series(col)
-            plot_tool.plot_distribution()
-
-        col_combs = combinations(self.biomarkers, 2)
-        for comb in col_combs:
-            if self.table_name != 'master_table.csv':
-                plot_tool.plot_with_labels(comb[0], comb[1])
-            else:
-                plot_tool.plot_2_distributions(comb[0], comb[1], kind='kde')
-
-    def _plot_master(self):
-
-        if self.df_master is None:
-            self._try_get_data(master_table=True)
-
-        _master_output_path = self._check_directory(os.path.join(self.output_path, 'output_master'))
-        master_plot_tool = PlottingDistributions(self.df_master, '', _master_output_path)
-
-        for col in self.biomarkers:
-            print(col)
-            if self.table_name != 'master_table.csv':
-                master_plot_tool.plot_with_labels('4C_' + col, '3C_' + col)
-            else:
-                master_plot_tool.plot_2_distributions('4C_' + col, '3C_' + col, kind='kde')
 
     def plot_distributions(self, plot_data=False, plot_master=False, table_name=None):
 
