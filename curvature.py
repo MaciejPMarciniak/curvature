@@ -58,15 +58,14 @@ if __name__ == '__main__':
 
     x = np.linspace(-5, 5, 1001)
     y = (x ** 2)
-    xy = list(zip(x, y))
+    xy = list(zip(x, y))  # list of points in 2D space
 
     curv = Curvature(line=xy)
-    curv.calculate_curvature()
-    print(max(curv.curvature))
-    curv.plot_curvature()
-    curv.calculate_curvature(gap=1)
-    print(max(curv.curvature))
-    curv.plot_curvature()
-    curv.calculate_curvature(gap=3)
-    print(max(curv.curvature))
+    curv.calculate_curvature(gap=0)
+
+    print('Curvature values (first 10 points): {}'.format(curv.curvature[:10]))
+    print('Curvature values (10 middle points): {}'.format(curv.curvature[495:505]))
+    print('Maximum curvature: {}'.format(max(curv.curvature)))
+    print('Minimum curvature: {}'.format(min(curv.curvature)))
+
     curv.plot_curvature()
