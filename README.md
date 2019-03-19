@@ -61,7 +61,7 @@ curv = Curvature(line=xy)
 curv.calculate_curvature(gap=0)
 
 print('Curvature values (first 10 points): {}'.format(curv.curvature[:10]))
-print('Curvature values (10 middle points): {}'.format(curv.curvature[495:505]))
+print('Curvature values (10 middle points): {}'.format(curv.curvature[int(len(x)/2-5):int(len(x)/2+5)]))
 print('Maximum curvature: {}'.format(max(curv.curvature)))
 print('Minimum curvature: {}'.format(min(curv.curvature)))
 
@@ -78,10 +78,8 @@ Curvature values (10 middle points): [1.98075815 1.98905163 1.99501104 1.9986009
 Maximum curvature: 1.9998000199980006
 Minimum curvature: 0.0019821241706415283
 ```
-![alt text][logo]
-
-[logo]: images/Parabola.png "Parabola, 1001 points"
-![curvature](images/Curvature.png "Curvature of the parabola")
+![parabola](images/Parabola.png "Parabola, 1001 points")
+![curvature](images/Curvature.png "Menger's curvature")
 
 ### class Cohort (ventricle.py)
 Cohort use description

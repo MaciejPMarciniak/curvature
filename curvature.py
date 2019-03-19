@@ -11,9 +11,7 @@ class Curvature:
     def __init__(self, line):
 
         self.line = np.array(line)
-        self.length = len(line)
-        self.curvature = np.zeros(self.length-2)
-        self.apices_per_frame = []
+        self.curvature = None
 
     @staticmethod
     def _get_twice_triangle_area(a, b, c):
@@ -41,6 +39,7 @@ class Curvature:
 
     def calculate_curvature(self, gap=0):
 
+        self.curvature = np.zeros(len(self.line) - 2)
         for local_, point in enumerate(range(len(self.curvature)-gap*2)):
             triplet = self.line[point:point+3+gap*2:gap+1, :]
             self.curvature[local_] = self._get_menger_curvature(*triplet)
@@ -49,8 +48,8 @@ class Curvature:
     def plot_curvature(self):
 
         fig, _ = plt.subplots(figsize=(8, 7))
-        _.plot(self.curvature, 'r-', lw=2)
-        _.set_title('Curvature of {} points'.format(len(self.curvature)))
+        _.plot(self.line[1:-1,0], self.curvature, 'r-', lw=2)
+        _.set_title('Menger\'s curvature'.format(len(self.curvature)))
         fig.savefig(os.path.join('images', 'Curvature.png'))
         return _
 
@@ -61,17 +60,11 @@ if __name__ == '__main__':
     y = (x ** 2)
     xy = list(zip(x, y))  # list of points in 2D space
 
-    # Plot parabola:
-    fig, _ = plt.subplots(figsize=(8, 7))
-    _.plot(x, y, 'b-', lw=2)
-    _.set_title('Quadratic parabola')
-    fig.savefig(os.path.join('images', 'Parabola.png'))
-
     curv = Curvature(line=xy)
     curv.calculate_curvature(gap=0)
 
     print('Curvature values (first 10 points): {}'.format(curv.curvature[:10]))
-    print('Curvature values (10 middle points): {}'.format(curv.curvature[495:505]))
+    print('Curvature values (10 middle points): {}'.format(curv.curvature[int(len(x)/2-5):int(len(x)/2+5)]))
     print('Maximum curvature: {}'.format(max(curv.curvature)))
     print('Minimum curvature: {}'.format(min(curv.curvature)))
 
