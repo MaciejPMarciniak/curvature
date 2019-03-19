@@ -17,6 +17,7 @@ methods can be applied to any traces of the left ventricle.
  semiautomated method for better recognition of patients with BSH. 
 
 # Screenshots
+Examples of differences in septal curvature among 3 patients: healthy, hypertensive and hypertensive with septal bulge:
 ![curvature examples](images/Curvature_healthy_htn_bsh.png "Curvature differences among patient groups")
 
 # How2use
@@ -51,7 +52,7 @@ It has been included as a smoothing option, with the trade-off on information lo
 
 Plots the curvature values as a line plot. 
 
-Example (quadratic parabola):
+**Example (quadratic parabola)**
 ```python
 import numpy as np
 from curvature import Curvature
@@ -102,8 +103,6 @@ cohort.save_curvatures()
 cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
 cohort.print_names_and_ids(to_file=True)
 ```
-### class PlottingDistributions (plotting.py)
-### class PlottingCurvature (plotting.py)
 
 # Credits
 Abstract
