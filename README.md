@@ -19,7 +19,7 @@ BSH
 Abstract
 
 # How2use
-### class Curvature (curvature.py)
+### curvature.Curvature
 class Curvature(line=[(x1, y1), (x2, y2), (x3, y3) ... (xn, yn)] 
 
 **Input argument** 
@@ -34,8 +34,7 @@ Numpy array. Menger's curvature value for each tuple in the input list, except f
 
 *Curvature.calculate_curvature(gap=0)* 
 
-Optional parameter gap sets the number of points away from the processed point, based on which the curvature is calculated. I.e. 
-
+Optional parameter gap sets the number of points away from the processed point, based on which the curvature is calculated:
 * if gap = 0, three consecutive points are used 
 * if gap = 1, for point number 2, points 0 and 4 are used, for point number 3, points 1 and 5 are used and so on. 
 * if gap = 2, for point number 3, points 0 and 6 are used, for point number 4, points 1 and 7 are used and so on. 
