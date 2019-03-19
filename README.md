@@ -20,8 +20,35 @@ Abstract
 
 # How2use
 ### class Curvature (curvature.py)
-Curvature use description
+class Curvature(line=[(x1, y1), (x2, y2), (x3, y3) ... (xn, yn)] 
 
+**Input argument** 
+
+List of tuples. Each tuple contains 2 values, i.e. X and Y position on the 2D plane. 
+
+**Output** 
+
+Numpy array. Menger's curvature value for each tuple in the input list, except first and the last one. 
+
+**Methods:** 
+
+*Curvature.calculate_curvature(gap=0)* 
+
+Optional parameter gap sets the number of points away from the processed point, based on which the curvature is calculated. I.e. 
+
+* if gap = 0, three consecutive points are used 
+* if gap = 1, for point number 2, points 0 and 4 are used, for point number 3, points 1 and 5 are used and so on. 
+* if gap = 2, for point number 3, points 0 and 6 are used, for point number 4, points 1 and 7 are used and so on. 
+
+It has been included as a smoothing option, with the trade-off on information loss. 
+
+*Curvature.plot_curvature()* 
+
+Plots the curvature values as a line plot. 
+
+ 
+
+Example
 ```Curvautre usage example
 import numpy as np
 from curvature import Curvature
