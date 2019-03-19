@@ -1,9 +1,9 @@
 # Curvature measurement
-In mathematics, the Menger curvature of a triple of points in n-dimensional Euclidean space is the reciprocal of the 
+In mathematics, the Menger curvature of three points in n-dimensional Euclidean space is the reciprocal of the 
 radius of the circle that passes through the three points.  Intuitively, curvature is the amount by which a geometric 
-object deviates from being a:
-* **flat plane** in case of the *surface*, 
-* **straight line** in case of the *curve*.
+object deviates from being:
+* a **flat plane** in case of the *surface*, 
+* a **straight line** in case of the *curve*.
 
 
 In this project, the curvature measurement is applied to human left ventricle traces, in order to determine the 
