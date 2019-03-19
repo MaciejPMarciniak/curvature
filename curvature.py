@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import warnings
 import matplotlib.pyplot as plt
 
@@ -50,7 +51,7 @@ class Curvature:
         fig, _ = plt.subplots(figsize=(8, 7))
         _.plot(self.curvature, 'r-', lw=2)
         _.set_title('Curvature of {} points'.format(len(self.curvature)))
-        fig.savefig('Curvature.png')
+        fig.savefig(os.path.join('images', 'Curvature.png'))
         return _
 
 
@@ -64,7 +65,7 @@ if __name__ == '__main__':
     fig, _ = plt.subplots(figsize=(8, 7))
     _.plot(x, y, 'b-', lw=2)
     _.set_title('Quadratic parabola')
-    fig.savefig('Parabola.png')
+    fig.savefig(os.path.join('images', 'Parabola.png'))
 
     curv = Curvature(line=xy)
     curv.calculate_curvature(gap=0)
