@@ -60,6 +60,7 @@ if __name__ == '__main__':
     y = (x ** 2)
     xy = list(zip(x, y))  # list of points in 2D space
 
+    # Plot parabola:
     fig, _ = plt.subplots(figsize=(8, 7))
     _.plot(x, y, 'b-', lw=2)
     _.set_title('Quadratic parabola')

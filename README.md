@@ -78,6 +78,8 @@ Curvature values (10 middle points): [1.98075815 1.98905163 1.99501104 1.9986009
 Maximum curvature: 1.9998000199980006
 Minimum curvature: 0.0019821241706415283
 ```
+![parabola](https://github.com/MaciejPMarciniak/curvature/Parabola.png "Parabola, 1001 points")
+![parabola](https://github.com/MaciejPMarciniak/curvature/Curvature.png "Curvature of the parabola")
 
 ### class Cohort (ventricle.py)
 Cohort use description
