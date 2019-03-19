@@ -11,12 +11,13 @@ occurrence of the left ventricular basal septal hypertrophy from 2 dimensional e
 methods can be applied to any traces of the left ventricle. 
 
 # Motivation
-HTN
-
-BSH
+ Localized basal septal hypertrophy (BSH) is a known marker of a more advanced impact of afterload on cardiac function 
+ in hypertension. There is variability in criteria used for defining BSH, mainly based on ratios of multiple septal wall
+ thickness measurements with high inter-observer variability. The aim is to investigate septal curvature as a novel, 
+ semiautomated method for better recognition of patients with BSH. 
 
 # Screenshots
-Abstract
+![curvature examples](images/Curvature_healthy_htn_bsh.png "Curvature differences among patient groups")
 
 # How2use
 ### curvature.Curvature
