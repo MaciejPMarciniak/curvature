@@ -93,6 +93,11 @@ Minimum curvature: 0.0019821241706415283
 ![curvature](images/Curvature.png "Menger's curvature")
 
 ### class Cohort (bsh.py)
+The aim of this class is to calculate the curvature of the trace of left ventricle and find indices that are useful for
+classification of the basal septal hypertrophy in hypertensive patients. The indices include *maximum* and *minimum* 
+curvature, the *changes in curvature over the cycle* and *interactions* between them. The derived indices are useful for the 
+statistical analysis, and show potential to unveil the basal septal hypertrophy setting in a robust, unbiased way.
+
 **Call**
 
 class Cohort(source_path='path_to_data', view='4C', output_path='path_to_store_results', 
@@ -113,24 +118,26 @@ output='name_of_output_file.csv')
 
 1 Tables:
 
-* File names in the input directory with corresponding IDs of cases. 
+* File names in the input directory with corresponding IDs of cases,
 
-* Curvature values of the trace changing in the cardiac cycle. 
+* Curvature values of the trace changing in the cardiac cycle,
 
-* Simple statistical values of the derived indices. 
+* All derived indices calculated in available views,
+
+* Simple statistical values of the derived indices,
 
 * Lists of most prevalent cases, in terms of the derived indices. 
 
 2 Plots:
 
-* Inidividual plots of the trace and the curvature throughout the cardiac cycle.  
+* Inidividual plots of the trace and the curvature throughout the cardiac cycle,  
 
 * Distributions of the derived indices in the population. 
 
 ---
 **Methods**
 ```text
-print_names_and_ids(self, to_file=False, views=('4C', '3C', '2C')) 
+Cohort.print_names_and_ids(to_file=False, views=('4C', '3C', '2C')) 
 ```
 
 Creates (or prints) the table with names of the files and corresponding IDs. Useful when the clinician provides tables with different IDs, unrelated to one another. 
@@ -139,11 +146,17 @@ Creates (or prints) the table with names of the files and corresponding IDs. Use
 
 *views* list is used to choose the relevant views to print out. The function prints the names and IDs for all views by default. 
 
-Example: Table with changed names 
+_Example:_ 
+```text
+Cohort.print_names_and_ids(views=['4C'])
+| AAAC0130_4C | BBB0460_4C | CCC0043_4C |  DD_4C | EE_4C |
+| AAAC0130 | BBB0460 | CCC0043 | X 7323260121 | aiouey11022017 |
+
+```
 
 --- 
 ```text
-save_curvatures(self) 
+Cohort.save_curvatures() 
 ```
 
 Saves the curvature of individual trace over 1 cycle. Rows denote the frames and columns are the separate points of the trace. 
@@ -152,15 +165,16 @@ Example: the table with curvature values
 
 --- 
 ```text
-get_statistics(self) 
+Cohort.get_statistics() 
 ```
 
 Builds a table with means and standard deviations of the derived indices for different labelled cohorts. It is useful for quick hypothesis testing. 
 
-Example: table with statisti
+Example: table with statistics
+
 --- 
 ```text
-get_extemes(self, n=30) 
+Cohort.get_extemes(n=30) 
 ```
 
 Creates a table with IDs of cases with most prevalent indices and interactions. It is useful for the analyst to decide on which indices are relevant for the classification. 
@@ -171,7 +185,7 @@ Example: table with IDs.
 
 --- 
 ```text
-plot_curvatures(self, coloring_scheme='curvature', plot_mean=False) 
+Cohort.plot_curvatures(coloring_scheme='curvature', plot_mean=False) 
 ```
 
 Plots the with traces in a given view and the curvature of each points in the trace in each frame. The traces can be coloured according to the value of the curvature, or the frame number. This function also creates heatmaps showing the curvature of the trace in the given view changing in time.  
@@ -180,7 +194,7 @@ Example: plot of traces and the heatmap
 
 --- 
 ```text
-plot_distributions(self, plot_data=False, plot_master=False, table_name=None) 
+Cohort.plot_distributions(plot_data=False, plot_master=False, table_name=None) 
 ```
 
 Plots the distributions of the derived indices, for univariate and bivariate exploratory data analysis. 

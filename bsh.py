@@ -112,11 +112,12 @@ class Trace:
 
 class Cohort:
 
-    def __init__(self, source_path='data', view='4C', output_path='data'):
+    def __init__(self, source_path='data', view='4C', output_path='data', indices_file='indices_all_cases.csv'):
 
         self.view = view
         self.source_path = source_path
         self.output_path = self._check_directory(output_path)
+        self.indices_file = indices_file
         self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
         self.files.sort()
         
@@ -186,7 +187,7 @@ class Cohort:
         self.df_all_cases['delta_ratio'] = self.df_all_cases['min_delta'] / self.df_all_cases['max_delta']
 
         if to_file:
-            self.df_all_cases.to_csv(os.path.join(self.output_path, self.view, 'output_EDA', self.output))
+            self.df_all_cases.to_csv(os.path.join(self.output_path, self.view, 'output_EDA', self.indices_file))
 
     def _build_master_table(self, to_file=False, views=('4C', '3C', '2C')):
 
