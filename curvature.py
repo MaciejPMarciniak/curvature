@@ -48,7 +48,7 @@ class Curvature:
     def plot_curvature(self):
 
         fig, _ = plt.subplots(figsize=(8, 7))
-        _.plot(self.line[1:-1,0], self.curvature, 'r-', lw=2)
+        _.plot(self.line[1:-1, 0], self.curvature, 'r-', lw=2)
         _.set_title('Corresponding Menger\'s curvature'.format(len(self.curvature)))
         fig.savefig(os.path.join('images', 'Curvature.png'))
         return _

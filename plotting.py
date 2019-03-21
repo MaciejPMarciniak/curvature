@@ -19,6 +19,7 @@ class PlottingCurvature:
         self.id = ventricle.id
         self.number_of_frames = ventricle.number_of_frames
         self.curvature = ventricle.ventricle_curvature
+        print('Curvature shape: {}'.format(self.curvature.shape))
         self.mean_curvature = ventricle.mean_curvature_over_time
         self.c_normalized = ventricle.vc_normalized
         self.mc_normalized = ventricle.mc_normalized
@@ -226,6 +227,20 @@ class PlottingCurvature:
         fig.suptitle('Geometric curvature in the trace of LV')
         # fig.tight_layout()
         fig.savefig(fname=os.path.join(self.output_path, '{}_colour_by_{}'.format(self.id, ext)))
+        plt.close()
+
+    def plot_heatmap(self):
+
+        fig = sns.heatmap(self.curvature.T, vmax=0.125, vmin=-0.07, center=0, cmap='seismic')
+        fig.set_title('Curvature heatmap')
+        apex_pos = int(self.curvature.shape[1]/2)
+        b_al_pos = self.curvature.shape[1] - 1
+        plt.yticks([1, apex_pos, b_al_pos], ['Basal\ninferoseptal', 'Apical', 'Basal\nanteroseptal'],
+                   rotation='horizontal')
+        plt.xticks([int(self.curvature.shape[0]/2)], ['Time'], rotation='horizontal')
+        plt.tick_params(axis=u'both', which=u'both', length=0)
+        plt.tight_layout()
+        plt.savefig(fname=os.path.join(self.output_path, 'Heatmap of {}'.format(self.id)))
         plt.close()
 
 # -----END-VentricleVisualization---------------------------------------------------------------------------------------

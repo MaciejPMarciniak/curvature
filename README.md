@@ -24,8 +24,9 @@ Examples of differences in septal curvature among 3 patients: healthy, hypertens
 ### curvature.Curvature
 
 **Call**
-
+```text
 Curvature(line=[(x1, y1), (x2, y2), (x3, y3) ... (xn, yn)] 
+```
 
 **Input**
 
@@ -36,8 +37,9 @@ Input argument *line* is a list of tuples. Each tuple contains 2 values, i.e. X 
 Numpy array. Menger's curvature value for each tuple in the input list, except first and the last one. 
 
 **Methods** 
-
+```text
 *Curvature.calculate_curvature(gap=0)* 
+```
 
 Calculates the curvature of the line. It is defined as the reciprocal of the radius of a circle intersecting three 
 points in 2D space.
@@ -47,8 +49,9 @@ Optional parameter *gap* sets the number of points away from the processed point
 * if gap = 2, for point number 3, points 0 and 6 are used, for point number 4, points 1 and 7 are used and so on. 
 
 It has been included as a smoothing option, with the trade-off on information loss. 
-
+```text
 *Curvature.plot_curvature()* 
+```
 
 Plots the curvature values as a line plot. 
 
@@ -85,8 +88,21 @@ Minimum curvature: 0.0019821241706415283
 ![parabola](images/Parabola.png "Parabola, 1001 points")
 ![curvature](images/Curvature.png "Menger's curvature")
 
-### class Cohort (ventricle.py)
-Cohort use description
+### class Cohort (bsh.py)
+**Call**
+
+Curvature(line=[(x1, y1), (x2, y2), (x3, y3) ... (xn, yn)] 
+
+**Input**
+
+Input argument *line* is a list of tuples. Each tuple contains 2 values, i.e. X and Y position on the 2D plane. 
+
+**Output** 
+
+Numpy array. Menger's curvature value for each tuple in the input list, except first and the last one. 
+
+**Methods** 
+
 ```Cohort usage for multiple curvature calculations
 import os
 from ventricle import Cohort

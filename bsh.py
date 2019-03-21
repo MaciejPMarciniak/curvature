@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from itertools import combinations
 
 
-class Ventricle:
+class Trace:
 
     def __init__(self, case_name, view):
         self.case_name = case_name
@@ -112,12 +112,11 @@ class Ventricle:
 
 class Cohort:
 
-    def __init__(self, source_path='data', view='4C', output_path='data', output='_all_cases.csv'):
+    def __init__(self, source_path='data', view='4C', output_path='data'):
 
         self.view = view
         self.source_path = source_path
         self.output_path = self._check_directory(output_path)
-        self.output = output
         self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
         self.files.sort()
         
@@ -175,7 +174,7 @@ class Cohort:
         list_of_dfs = []
         for curv_file in self.files:
             print('case: {}'.format(curv_file))
-            ven = Ventricle(curv_file, view=self.view)
+            ven = Trace(curv_file, view=self.view)
             list_of_dfs.append(ven.get_biomarkers())
 
         self.df_all_cases = pd.concat(list_of_dfs)
@@ -246,7 +245,7 @@ class Cohort:
             names = {}
             for curv_file in self.files:
                 print('case: {}'.format(curv_file))
-                ven = Ventricle(curv_file, view=self.view)
+                ven = Trace(curv_file, view=self.view)
                 case_name = curv_file.split('/')[-1].split('.')[0]  # get case name without path and extension
                 names[case_name] = ven.id
             if to_file:
@@ -255,35 +254,14 @@ class Cohort:
                     w.writeheader()
                     w.writerow(names)
 
-    def plot_curvatures(self, coloring_scheme='curvature', plot_mean=False):
+    def save_curvatures(self):
 
-        _source_path = os.path.join(self.source_path, self.view)
-        if plot_mean:
-            _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature', 'mean'))
-        else:
-            _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature'))
+        _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature', 'curvatures'))
 
         for case in self.files:
-            ven = Ventricle(case_name=case, view=self.view)
+            ven = Trace(case_name=case, view=self.view)
             print(ven.id)
-            print('Points: {}'.format(ven.number_of_points))
-            plot_tool = PlottingCurvature(source=_source_path,
-                                          output_path=_output_path,
-                                          ventricle=ven)
-            if plot_mean:
-                plot_tool.plot_mean_curvature()
-            else:
-                plot_tool.plot_all_frames(coloring_scheme=coloring_scheme)
-
-    def plot_distributions(self, plot_data=False, plot_master=False, table_name=None):
-
-        self.table_name = table_name
-
-        if plot_data:
-            self._plot_data()
-
-        if plot_master:
-            self._plot_master()
+            pd.DataFrame(ven.ventricle_curvature).to_csv(os.path.join(_output_path, ven.id+'.csv'))
 
     def get_statistics(self):
 
@@ -297,15 +275,6 @@ class Cohort:
         for lab in range(3):
             df_stats['std_' + str(lab)] = self.df_master[self.df_master['label'] == lab].std()
         df_stats.to_csv(os.path.join(self.output_path, 'master_stats.csv'))
-
-    def save_curvatures(self):
-
-        _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature', 'curvatures'))
-
-        for case in self.files:
-            ven = Ventricle(case_name=case, view=self.view)
-            print(ven.id)
-            pd.DataFrame(ven.ventricle_curvature).to_csv(os.path.join(_output_path, ven.id+'.csv'))
 
     def get_extemes(self, n=30):
 
@@ -323,6 +292,37 @@ class Cohort:
         _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_EDA'))
         df_extremes.to_csv(os.path.join(_output_path, 'extremes.csv'))
 
+    def plot_curvatures(self, coloring_scheme='curvature', plot_mean=False):
+
+        _source_path = os.path.join(self.source_path, self.view)
+        if plot_mean:
+            _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature', 'mean'))
+        else:
+            _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature'))
+
+        for case in self.files:
+            ven = Trace(case_name=case, view=self.view)
+            print(ven.id)
+            print('Points: {}'.format(ven.number_of_points))
+            plot_tool = PlottingCurvature(source=_source_path,
+                                          output_path=_output_path,
+                                          ventricle=ven)
+            if plot_mean:
+                plot_tool.plot_mean_curvature()
+            else:
+                plot_tool.plot_all_frames(coloring_scheme=coloring_scheme)
+                plot_tool.plot_heatmap()
+
+    def plot_distributions(self, plot_data=False, plot_master=False, table_name=None):
+
+        self.table_name = table_name
+
+        if plot_data:
+            self._plot_data()
+
+        if plot_master:
+            self._plot_master()
+
 
 if __name__ == '__main__':
 
@@ -337,8 +337,8 @@ if __name__ == '__main__':
 
         # cohort.get_extemes(32)
         # cohort.plot_curvatures('asf')
-        # cohort.plot_curvatures(coloring_scheme='curvature')
-        cohort.save_curvatures()
+        cohort.plot_curvatures(coloring_scheme='curvature')
+        # cohort.save_curvatures()
         # cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
         # cohort.print_names_and_ids(to_file=True)
         # cohort.get_statistics()
