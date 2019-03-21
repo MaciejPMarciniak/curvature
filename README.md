@@ -36,9 +36,10 @@ Input argument *line* is a list of tuples. Each tuple contains 2 values, i.e. X 
 
 Numpy array. Menger's curvature value for each tuple in the input list, except first and the last one. 
 
+---
 **Methods** 
 ```text
-*Curvature.calculate_curvature(gap=0)* 
+Curvature.calculate_curvature(gap=0)
 ```
 
 Calculates the curvature of the line. It is defined as the reciprocal of the radius of a circle intersecting three 
@@ -48,13 +49,16 @@ Optional parameter *gap* sets the number of points away from the processed point
 * if gap = 1, for point number 2, points 0 and 4 are used, for point number 3, points 1 and 5 are used and so on, 
 * if gap = 2, for point number 3, points 0 and 6 are used, for point number 4, points 1 and 7 are used and so on. 
 
-It has been included as a smoothing option, with the trade-off on information loss. 
+It has been included as a smoothing option, with the trade-off on information loss.
+
+---
 ```text
-*Curvature.plot_curvature()* 
+Curvature.plot_curvature()
 ```
 
 Plots the curvature values as a line plot. 
 
+---
 **Example (quadratic parabola)**
 ```python
 import numpy as np
@@ -91,17 +95,100 @@ Minimum curvature: 0.0019821241706415283
 ### class Cohort (bsh.py)
 **Call**
 
-Curvature(line=[(x1, y1), (x2, y2), (x3, y3) ... (xn, yn)] 
+class Cohort(source_path='path_to_data', view='4C', output_path='path_to_store_results', 
+output='name_of_output_file.csv') 
 
 **Input**
 
-Input argument *line* is a list of tuples. Each tuple contains 2 values, i.e. X and Y position on the 2D plane. 
+*source_path*: path to the .csv files containing the myocardial trace obtained with speckle tracing in EchoPAC. 
+ 
 
+*view*: the view in which the image was taken; 4-chamber ('4C'), 3-chamber ('3C'), or 2-chamber ('2C') 
+
+ 
+*output_path*: path to a folder where the results of computation and plots will be stored 
+
+ 
 **Output** 
 
-Numpy array. Menger's curvature value for each tuple in the input list, except first and the last one. 
+1 Tables:
 
-**Methods** 
+* File names in the input directory with corresponding IDs of cases. 
+
+* Curvature values of the trace changing in the cardiac cycle. 
+
+* Simple statistical values of the derived indices. 
+
+* Lists of most prevalent cases, in terms of the derived indices. 
+
+2 Plots:
+
+* Inidividual plots of the trace and the curvature throughout the cardiac cycle.  
+
+* Distributions of the derived indices in the population. 
+
+---
+**Methods**
+```text
+print_names_and_ids(self, to_file=False, views=('4C', '3C', '2C')) 
+```
+
+Creates (or prints) the table with names of the files and corresponding IDs. Useful when the clinician provides tables with different IDs, unrelated to one another. 
+
+*to_file* controls whether the table is saved to file, or is printed in the console. 
+
+*views* list is used to choose the relevant views to print out. The function prints the names and IDs for all views by default. 
+
+Example: Table with changed names 
+
+--- 
+```text
+save_curvatures(self) 
+```
+
+Saves the curvature of individual trace over 1 cycle. Rows denote the frames and columns are the separate points of the trace. 
+
+Example: the table with curvature values 
+
+--- 
+```text
+get_statistics(self) 
+```
+
+Builds a table with means and standard deviations of the derived indices for different labelled cohorts. It is useful for quick hypothesis testing. 
+
+Example: table with statisti
+--- 
+```text
+get_extemes(self, n=30) 
+```
+
+Creates a table with IDs of cases with most prevalent indices and interactions. It is useful for the analyst to decide on which indices are relevant for the classification. 
+
+*n* is the number of cases to print for each index.
+
+Example: table with IDs.  
+
+--- 
+```text
+plot_curvatures(self, coloring_scheme='curvature', plot_mean=False) 
+```
+
+Plots the with traces in a given view and the curvature of each points in the trace in each frame. The traces can be coloured according to the value of the curvature, or the frame number. This function also creates heatmaps showing the curvature of the trace in the given view changing in time.  
+
+Example: plot of traces and the heatmap 
+
+--- 
+```text
+plot_distributions(self, plot_data=False, plot_master=False, table_name=None) 
+```
+
+Plots the distributions of the derived indices, for univariate and bivariate exploratory data analysis. 
+
+Examples: Univariate and bivariate plots 
+
+
+**Full example**
 
 ```Cohort usage for multiple curvature calculations
 import os
