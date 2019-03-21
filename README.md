@@ -180,12 +180,44 @@ Frames/trace points | 0 | 1 | 2 | 3 | 4 | ...
 
 --- 
 ```text
+Cohort.save_indices() 
+```
+
+Saves the derived indices of the current view to a .csv file. The meaning of the indices is listed in the table below.
+
+ Index name | Description
+ --- | ---
+ min | Minimum curvature value in the cycle
+ max | Maximum curvautre value in the cycle
+ min_delta | The change of the curvature value at the trace point with minimum curvature within the cycle. 
+ max_delta | The change of the curvature value at the trace point with maximum curvature within the cycle.
+ amplitude_at_t | 
+ min_index | Interaction between *min* and *min_delta* (multiplication)
+ min_index2 | Interaction between *min* and *min_delta* (ratio)
+ log_min_index | Natural logarithm of the *min_index*. Used to get the gaussian distribution of that index.
+ min_v_amp_index |  Interaction between *min* and *amplitude_at_t* (multiplication)
+ log_min_v_amp_index | Natural logarithm of *min_v_amp_index*. Used to get the gaussian distribution of that index.
+ delta_ratio | Interaction between *min_delta* and *max_delta* (ratio)
+
+_Example:_ 
+
+In *~/output_curvature/_all_cases.csv*:
+
+Cases/indices | min | max | min_delta | max_delta | amplitude_at_t | min_index2 | min_index | log_min_index | min_v_amp_index | log_min_v_amp_index | delta_ratio
+:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:
+ABC0123 | -0.0405158262 | 0.1241208005 | 0.0385328157 | 0.0647216494 | 0.1171728977 | 0.9510559044 | 1.5611888659 | 0.4454476246 | 4.5150016783 | 1.5074055586 | 0.595362079
+BCD0234 | -0.0342108651 | 0.0972381045 | 0.019898385 | 0.0388777246 | 0.1146886061 | 0.5816393389 | 0.6807409648 | -0.38457342 | 2.282118037 | 0.8251039753 | 0.5118196907
+CDEG0345 | -0.049368904 | 0.103583772 | 0.0181921495 | 0.0386067579 | 0.119485792 | 0.3684940926 | 0.8981264815 | -0.1074443726 | 2.1737033887 | 0.7764323436 | 0.4712167114
+...|...|...|...|...|...|...|...|...|...|...|...
+
+--- 
+```text
 Cohort.get_statistics() 
 ```
 
 Builds a table with means and standard deviations of the derived indices for different labelled cohorts. It is useful for quick hypothesis testing. 
 
-Example: table with statistics
+_Example:_ 
 
 --- 
 ```text

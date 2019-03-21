@@ -264,7 +264,11 @@ class Cohort:
             print(ven.id)
             pd.DataFrame(ven.ventricle_curvature).to_csv(os.path.join(_output_path, ven.id+'.csv'))
 
-    def get_statistics(self):
+    def save_indices(self):
+
+        self._build_data_set(to_file=True)
+
+    def save_statistics(self):
 
         if self.df_master is None:
             self.table_name = 'master_table_with_labels.csv'
@@ -277,7 +281,7 @@ class Cohort:
             df_stats['std_' + str(lab)] = self.df_master[self.df_master['label'] == lab].std()
         df_stats.to_csv(os.path.join(self.output_path, 'master_stats.csv'))
 
-    def get_extemes(self, n=30):
+    def save_extemes(self, n=30):
 
         self._try_get_data(data=True)
 
