@@ -149,10 +149,11 @@ Creates (or prints) the table with names of the files and corresponding IDs. Use
 _Example:_ 
 ```text
 Cohort.print_names_and_ids(views=['4C'])
-| AAAC0130_4C | BBB0460_4C | CCC0043_4C |  DD_4C | EE_4C |
-| AAAC0130 | BBB0460 | CCC0043 | X 7323260121 | aiouey11022017 |
-
 ```
+|  |  |  |  |  |  |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| AAAC0130_4C | BBB0460_4C | CCC0043_4C |  DD_4C | EE_4C | ...
+| AAAC0130 | BBB0460 | CCC0043 | X 7323260121 | aiouey11022017 | ...
 
 --- 
 ```text
@@ -160,8 +161,18 @@ Cohort.save_curvatures()
 ```
 
 Saves the curvature of individual trace over 1 cycle. Rows denote the frames and columns are the separate points of the trace. 
+_Example:_ 
 
-Example: the table with curvature values 
+*ABCDE0123.csv*
+
+Frames/trace points | 0 | 1 | 2 | 3 | 4 | ...
+ :---:|:---:|:---:| :---: | :---: | :---: | :---:
+  0 | -0.0004368951 | -0.0008411005 | 9.81975201759697E-05 | -0.0023831521 | -0.0045366323 | ...
+  1 | 0.0004937481 | -0.0003834384 | -0.0003401089 | -0.0018914279 | -0.0039957284 | ... 
+  2 | 0.0005044135 | -0.001319833 | 0.0011134577 | -0.0028624835 | -0.0044718255 | ...
+  3 | 0.0005097837 | 0.0006038951 | -0.0013404811 | -0.0013120823 | -0.0049921892 | ...
+  4 | 9.36306817606534E-05 | -0.0008662325 | 0.0001828868 | -0.0033066163 | -0.0034790443 | ... 
+ ... | ... | ... | ... | ... | ... | ...
 
 --- 
 ```text
