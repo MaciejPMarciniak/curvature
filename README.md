@@ -161,9 +161,13 @@ Cohort.save_curvatures()
 ```
 
 Saves the curvature of individual trace over 1 cycle. Rows denote the frames and columns are the separate points of the trace. 
-_Example:_ 
 
-*ABCDE0123.csv*
+_Example:_ 
+```text
+Cohort.save_curvatures() 
+```
+
+In *~/output_curvature/curvatures/ABCDE0123.csv*:
 
 Frames/trace points | 0 | 1 | 2 | 3 | 4 | ...
  :---:|:---:|:---:| :---: | :---: | :---: | :---:
