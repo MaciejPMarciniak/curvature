@@ -266,23 +266,26 @@ class PlottingDistributions:
 
         f, axes = plt.subplots(1, 2, figsize=(10, 6))
         sns.despine(left=True)
-        sns.kdeplot(self.df[self.series], shade=True, color='b', ax=axes[0])
-
+        sns.kdeplot(self.df[self.series], shade=True, color='b', ax=axes[0], label='PDF of \' ' + self.series + '\'')
         sns.distplot(self.df[self.series], kde=False, rug=True, color='r', bins=None, ax=axes[1])
+
         series_max = max(self.df[self.series])
         xlim = (min(self.df[self.series]) - 0.1 * series_max, series_max + 0.1 * series_max)
 
         for i in range(2):
             axes[i].set_xlim(xlim)
 
-        axes[0].set_title('Kernel density distribution')
-        axes[1].set_title('Histogram')
+        axes[0].set_title('Kernel density distribution of \'' + self.series + '\' index')
+        axes[1].set_title('Histogram of \'' + self.series + '\' index')
+        axes[1].set_xlabel('Value of \'' + self.series + '\'')
+        axes[1].set_ylabel('Count')
         sns.set()
         plt.tight_layout()
 
         if show:
             plt.show()
         self._save_plot(self.series + '.png', f)
+        plt.close()
 
     def plot_multiple_distributions(self, group_by, show=False):
 
@@ -319,7 +322,7 @@ class PlottingDistributions:
                           color='g', height=6, space=0)
         g.plot_joint(plt.scatter, c="grey", s=20, linewidth=1, marker="+")
         g.ax_joint.collections[0].set_alpha(0)
-        g.fig.suptitle('2D distribution')
+        g.fig.suptitle('Bi-variate distribution')
         sns.set()
         plt.tight_layout()
 
