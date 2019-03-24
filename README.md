@@ -192,7 +192,7 @@ Saves the derived indices of the current view to a .csv file. The meaning of the
  max | Maximum curvautre value in the cycle
  min_delta | The change of the curvature value at the trace point with minimum curvature within the cycle. 
  max_delta | The change of the curvature value at the trace point with maximum curvature within the cycle.
- amplitude_at_t | 
+ amplitude_at_t | Maximum difference between the lowest and highest curvature in the trace in a single time frame.
  min_index | Interaction between *min* and *min_delta* (multiplication)
  min_index2 | Interaction between *min* and *min_delta* (ratio)
  log_min_index | Natural logarithm of the *min_index*. Used to get the gaussian distribution of that index.
@@ -278,6 +278,7 @@ _Example:_
 Cohort.plot_curvatures(coloring_scheme='curvature')
 ```
 ![parabola](images/Colour_by_curvature.png "Curvature of the left ventricle over the full cardiac cycle")
+
 ![curvature](images/Heatmap.png "Segment vs time heatmap of curvature")
 
 --- 
