@@ -82,13 +82,13 @@ class PlottingCurvature:
 
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(13, 8))
 
-        ax0.set_title('Case {}, full cycle'.format(self.id))
+        ax0.set_title('LV trace, full cycle'.format(self.id))
         ax0.set_xlim(-30, 55)
-        ax0.set_ylim(-5, 95)
+        ax0.set_ylim(-85, 5)
         ax0.set_xlabel('Short axis')
         ax0.set_ylabel('Long axis')
 
-        ax1.set_title('Geometric point-to-point curvature')
+        ax1.set_title('Mean geometric point-to-point curvature')
         ax1.axhline(y=0, c='k', ls='-.', lw=2)
         ax1.set_xlim(-1, len(self.mc_normalized) + 2)
         ax1.set_ylim(-0.07, 0.13)
@@ -100,7 +100,7 @@ class PlottingCurvature:
         ext = 'curvature'
 
         legend_elements0 = \
-            [Line2D([0], [0], c='w', marker='d', markerfacecolor='k', markersize=9, label='Apex at \'ED\'')]
+            [Line2D([0], [0], c='w', marker='d', markerfacecolor='k', markersize=9, label='Apex at ED')]
         legend_elements1 = [Line2D([0], [0], c='b', lw=2, label='Negative curvature'),
                             Line2D([0], [0], c='r', lw=2, label='Positive curvature'),
                             Line2D([0], [0], c='k', ls='-.', label='Apical point')]
@@ -108,6 +108,7 @@ class PlottingCurvature:
         for frame_number in range(self.number_of_frames):
 
             xx, yy, _ = self._get_translated_element(frame_number, self.ed_apex)
+            yy *= -1
             norm_curv = self._append_missing_curvature_values(self.c_normalized[self.ed_frame])
 
             color_tr = cm.coolwarm(norm_curv)
@@ -137,7 +138,7 @@ class PlottingCurvature:
     def plot_all_frames(self, coloring_scheme=None):
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
 
-        ax0.set_title('Case {}, full cycle'.format(self.id))
+        ax0.set_title('LV trace, full cycle'.format(self.id))
         ax0.set_ylim(-85, 5)
 
         ax0.set_xlim(-30, 55)

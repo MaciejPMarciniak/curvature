@@ -342,7 +342,7 @@ if __name__ == '__main__':
 
         # cohort.get_extemes(32)
         # cohort.plot_curvatures('asf')
-        cohort.plot_curvatures(coloring_scheme='curvature')
+        cohort.plot_curvatures(coloring_scheme='curvature', plot_mean=True)
         # cohort.save_curvatures()
         # cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
         # cohort.print_names_and_ids(to_file=True)

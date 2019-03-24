@@ -24,7 +24,7 @@ Examples of differences in septal curvature among 3 patients: healthy, hypertens
 ### curvature.Curvature
 
 **Call**
-```text
+```python
 Curvature(line=[(x1, y1), (x2, y2), (x3, y3) ... (xn, yn)] 
 ```
 
@@ -38,7 +38,7 @@ Numpy array. Menger's curvature value for each tuple in the input list, except f
 
 ---
 **Methods** 
-```text
+```python
 Curvature.calculate_curvature(gap=0)
 ```
 
@@ -52,7 +52,7 @@ Optional parameter *gap* sets the number of points away from the processed point
 It has been included as a smoothing option, with the trade-off on information loss.
 
 ---
-```text
+```python
 Curvature.plot_curvature()
 ```
 
@@ -99,9 +99,10 @@ curvature, the *changes in curvature over the cycle* and *interactions* between 
 statistical analysis, and show potential to unveil the basal septal hypertrophy setting in a robust, unbiased way.
 
 **Call**
-
+```python
 class Cohort(source_path='path_to_data', view='4C', output_path='path_to_store_results', 
-output='name_of_output_file.csv') 
+output='name_of_output_file.csv')
+```
 
 **Input**
 
@@ -136,7 +137,7 @@ output='name_of_output_file.csv')
 
 ---
 **Methods**
-```text
+```python
 Cohort.print_names_and_ids(to_file=False, views=('4C', '3C', '2C')) 
 ```
 
@@ -147,7 +148,7 @@ Creates (or prints) the table with names of the files and corresponding IDs. Use
 *views* list is used to choose the relevant views to print out. The function prints the names and IDs for all views by default. 
 
 _Example:_ 
-```text
+```python
 Cohort.print_names_and_ids(views=['4C'])
 ```
 |  |  |  |  |  |  |
@@ -156,14 +157,14 @@ Cohort.print_names_and_ids(views=['4C'])
 | AAAC0130 | BBB0460 | CCC0043 | X 7323260121 | aiouey11022017 | ...
 
 --- 
-```text
+```python
 Cohort.save_curvatures() 
 ```
 
 Saves the curvature of individual trace over 1 cycle. Rows denote the frames and columns are the separate points of the trace. 
 
 _Example:_ 
-```text
+```python
 Cohort.save_curvatures() 
 ```
 
@@ -179,7 +180,7 @@ Frames/trace points | 0 | 1 | 2 | 3 | 4 | ...
  ... | ... | ... | ... | ... | ... | ...
 
 --- 
-```text
+```python
 Cohort.save_indices() 
 ```
 
@@ -211,7 +212,7 @@ CDEG0345 | -0.049368904 | 0.103583772 | 0.0181921495 | 0.0386067579 | 0.11948579
 ...|...|...|...|...|...|...|...|...|...|...|...
 
 --- 
-```text
+```python
 Cohort.get_statistics() 
 ```
 
@@ -219,8 +220,23 @@ Builds a table with means and standard deviations of the derived indices for dif
 
 _Example:_ 
 
+Index/statistics | mean_0 | mean_1 | mean_2 | std_0 | std_1 | std_2
+:---: | :---: | :---: | :---: | :---: | :---: | :---:  
+4C_min | -0.0201778317 | -0.0306086873 | -0.0594613681 | 0.0094344275 | 0.0170520522 | 0.0360928091
+4C_max | 0.1087235323 | 0.109365046 | 0.0957044432 | 0.0236570663 | 0.0265233657 | 0.0239325507
+4C_min_delta | 0.0227348783 | 0.0248032401 | 0.0379769438 | 0.010082188 | 0.0134498406 | 0.0337178725
+4C_max_delta | 0.0446129786 | 0.0455289686 | 0.0399468814 | 0.0181516539 | 0.0189862068 | 0.0169131205
+... | ... | ... | ... | ... | ... | ...
+3C_amplitude_at_t | 0.1167719637 | 0.1246514751 | 0.1331294584 | 0.0236643173 | 0.0369586565 | 0.0386191622
+3C_min_index2 | 1.0520912139 | 1.2492809199 | 1.0500957051 | 0.4744280389 | 1.1546531841 | 1.1060600567
+3C_min_index | 2.2969437175 | 2.1863779053 | 2.7044641932 | 2.8040017642 | 3.5199219066 | 2.8053581802
+... | ... | ... | ... | ... | ... | ...
+2C_log_min_v_amp_index | 0.9189543648 | 0.9803873018 | 0.9060236148 | 0.6162538405 | 0.6604411427 | 0.8709891975
+2C_delta_ratio | 0.8166180442 | 0.5427945579 | 0.5226342278 | 0.4526526978 | 0.3259621391 | 0.4914749823
+label | 0 | 1 | 2 | 0 | 1 | 2
+
 --- 
-```text
+```python
 Cohort.get_extemes(n=30) 
 ```
 
@@ -228,35 +244,82 @@ Creates a table with IDs of cases with most prevalent indices and interactions. 
 
 *n* is the number of cases to print for each index.
 
-Example: table with IDs.  
+_Example:_
 
+Index/Order | 0 | 1 | 2 | 3 | 4 | ...
+:---: | :---: | :---: | :---: | :---: | :---: | :---:
+min | AAA202 | BBB392 | CCC287 | DDD237 | EEE017 | ...
+min | -0.001953125 | -0.0045234734 | -0.0047688238 | -0.0057060377 | -0.0061885245 | ..
+max | GGG143 | ZZZ0118 | HHH002 | CCC449 | RRR426 | ...
+max | 0.2076821012 | 0.1961639528 | 0.1940575819 | 0.1619409786 | 0.1581591041 | ...
+min_delta | VVV456 | MMM270 | AAA269 | FFF397 | KKK454 | ...
+min_delta | 0.1501618275 | 0.1325194951 | 0.071514939 | 0.071109584 | 0.0663142855 | ...
+max_delta | JJJ143 | KKK118 | AAA002 | DDD272 | LLL304 | ...
+max_delta | 0.1270445332 | 0.1089291092 | 0.0903139148 | 0.0835954327 | 0.0815581419 | ...
+amplitude_at_t | XXXe456 | EEE270 |PPP269 | DDD115 | NNN308 | ...
+amplitude_at_t | 0.2161523475 | 0.2101911611 | 0.1866468858 | 0.1859104827 | 0.1799677971 | ...
+... | ... | ... | ... | ... | ... | ...
 --- 
-```text
-Cohort.plot_curvatures(coloring_scheme='curvature', plot_mean=False) 
+```python
+Cohort.plot_curvatures(coloring_scheme='curvature') 
 ```
 
-Plots the with traces in a given view and the curvature of each points in the trace in each frame. The traces can be coloured according to the value of the curvature, or the frame number. This function also creates heatmaps showing the curvature of the trace in the given view changing in time.  
+Plots the with traces in a given view and the curvature of each points in the trace in each frame. The traces can be 
+coloured according to the value of the curvature, or the frame number. This function also creates heatmaps showing the
+curvature of the trace in the given view changing in time. End-diastolic and end-systolic frames are found by
+calculating the maximum and minimum area covered by the trace.  
 
-Example: plot of traces and the heatmap 
+*coloring_scheme* - if set to 'curvautre', the plot shows the positive curvature as red and negative curvature as blue.
+Otherwise, by default, the colors correspond to the frame number. This feature is not perfect, as it is not possible to 
+relate the frame number to cycle makers, such as aortic valve closure, mitral valve opening, etc.
+
+_Example:_
+```python
+Cohort.plot_curvatures(coloring_scheme='curvature')
+```
+![parabola](images/Colour_by_curvature.png "Curvature of the left ventricle over the full cardiac cycle")
+![curvature](images/Heatmap.png "Segment vs time heatmap of curvature")
 
 --- 
-```text
+```python
+Cohort.plot_mean_curvature()
+```
+
+Plots curvature, where for each point in the the trace a mean of the curvature over the full cycle is calculated.
+
+_Example:_
+```python
+Cohort.plot_mean_curvature()
+```
+
+![parabola](images/Mean_curvature.png "Mean curvature of the LV over the cardiac cycle")
+
+---
+```python
 Cohort.plot_distributions(plot_data=False, plot_master=False, table_name=None) 
 ```
 
 Plots the distributions of the derived indices, for univariate and bivariate exploratory data analysis. 
 
-Examples: Univariate and bivariate plots 
+*plot_data* - if set to true, plots the univariate plots of available indices from a single view. With *table_name set
+to 'master_table.csv', it will plot the bivariate interactions between the indices (provided that the 'master_table
+exists)
+
+*plot_master* - if set to true, also plots the univariate plots, but from all the available views. With *table_name set
+to 'master_table.csv',the function will plot bivariate interactions between the indices (provided that the 'master_table
+exists and different views indices are avaiable).
+  
+_Examples:_ Univariate and bivariate plots 
 
 
 **Full example**
 
-```Cohort usage for multiple curvature calculations
+```python
 import os
-from ventricle import Cohort
+from bsh import Cohort
 
-source = os.path.join('/home/mat/Python/data/curvature')
-target_path = os.path.join('/home/mat/Python/data/curvature/')
+source = os.path.join('~/Python/data/curvature')
+target_path = os.path.join('~/Python/data/curvature/')
 
 cohort = Cohort(source_path=source, view=_view, output_path=target_path)
 
