@@ -297,15 +297,17 @@ _Examples:_
 Cohort.plot_distributions(plot_data=True, table_name=all_cases_with_labels.csv)
 ```
 
-![Distribution](images/Distribution of index min.png "Single index distribution in 2 views")
+![Distribution](images/Distribution_of_index_min.png "Single index distribution in 2 views")
 
 
 ```python
 Cohort.plot_distributions(plot_data=True, table_name=all_cases_with_labels.csv)
 ```
 
-![Regression](images/min_delta_vs_min_index2 plot with labels.png "Scatter plot with labels and linear regression with 
+![Regression](images/min_delta_vs_min_index2_with_labels.png "Scatter plot with labels and linear regression with 
 confidence intervals")
+
+---
 
 **Full example**
 
