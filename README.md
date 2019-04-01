@@ -277,7 +277,7 @@ _Example:_
 Cohort.plot_mean_curvature()
 ```
 
-![parabola](images/Mean_curvature.png "Mean curvature of the LV over the cardiac cycle")
+![MeanCurves](images/Mean_curvature.png "Mean curvature of the LV over the cardiac cycle")
 
 ---
 ### plot_distributions(plot_data=False, plot_master=False, table_name=None) 
@@ -297,14 +297,14 @@ _Examples:_
 Cohort.plot_distributions(plot_data=True, table_name=all_cases_with_labels.csv)
 ```
 
-![parabola](images/Distribution of index min.png "Single index distribution in 2 views")
+![Distribution](images/Distribution of index min.png "Single index distribution in 2 views")
 
 
 ```python
 Cohort.plot_distributions(plot_data=True, table_name=all_cases_with_labels.csv)
 ```
 
-![parabola](images/min_delta_vs_min_index2 plot with labels.png "Scatter plot with labels and linear regression with 
+![Regression](images/min_delta_vs_min_index2 plot with labels.png "Scatter plot with labels and linear regression with 
 confidence intervals")
 
 **Full example**
