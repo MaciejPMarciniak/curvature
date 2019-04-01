@@ -21,7 +21,7 @@
 *.iws
 
 # Virtual environment
-venv/
+/venv
 
 __pycache__/
 
