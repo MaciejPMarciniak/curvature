@@ -38,9 +38,7 @@ Numpy array. Menger's curvature value for each tuple in the input list, except f
 
 ---
 **Methods** 
-```python
-Curvature.calculate_curvature(gap=0)
-```
+### calculate_curvature(gap=0)
 
 Calculates the curvature of the line. It is defined as the reciprocal of the radius of a circle intersecting three 
 points in 2D space.
@@ -52,9 +50,7 @@ Optional parameter *gap* sets the number of points away from the processed point
 It has been included as a smoothing option, with the trade-off on information loss.
 
 ---
-```python
-Curvature.plot_curvature()
-```
+### plot_curvature()
 
 Plots the curvature values as a line plot. 
 
