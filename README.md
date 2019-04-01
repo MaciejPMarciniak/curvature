@@ -137,9 +137,7 @@ output='name_of_output_file.csv')
 
 ---
 **Methods**
-```python
-Cohort.print_names_and_ids(to_file=False, views=('4C', '3C', '2C')) 
-```
+### print_names_and_ids(to_file=False, views=('4C', '3C', '2C')) 
 
 Creates (or prints) the table with names of the files and corresponding IDs. Useful when the clinician provides tables with different IDs, unrelated to one another. 
 
@@ -157,9 +155,7 @@ Cohort.print_names_and_ids(views=['4C'])
 | AAAC0130 | BBB0460 | CCC0043 | X 7323260121 | aiouey11022017 | ...
 
 --- 
-```python
-Cohort.save_curvatures() 
-```
+### save_curvatures()
 
 Saves the curvature of individual trace over 1 cycle. Rows denote the frames and columns are the separate points of the trace. 
 
@@ -180,9 +176,7 @@ Frames/trace points | 0 | 1 | 2 | 3 | 4 | ...
  ... | ... | ... | ... | ... | ... | ...
 
 --- 
-```python
-Cohort.save_indices() 
-```
+### save_indices() 
 
 Saves the derived indices of the current view to a .csv file. The meaning of the indices is listed in the table below.
 
@@ -212,9 +206,8 @@ CDEG0345 | -0.049368904 | 0.103583772 | 0.0181921495 | 0.0386067579 | 0.11948579
 ...|...|...|...|...|...|...|...|...|...|...|...
 
 --- 
-```python
-Cohort.get_statistics() 
-```
+### get_statistics() 
+
 
 Builds a table with means and standard deviations of the derived indices for different labelled cohorts. It is useful for quick hypothesis testing. 
 
@@ -236,9 +229,8 @@ Index/statistics | mean_0 | mean_1 | mean_2 | std_0 | std_1 | std_2
 label | 0 | 1 | 2 | 0 | 1 | 2
 
 --- 
-```python
-Cohort.get_extemes(n=30) 
-```
+### get_extemes(n=30) 
+
 
 Creates a table with IDs of cases with most prevalent indices and interactions. It is useful for the analyst to decide on which indices are relevant for the classification. 
 
@@ -260,9 +252,7 @@ amplitude_at_t | XXXe456 | EEE270 |PPP269 | DDD115 | NNN308 | ...
 amplitude_at_t | 0.2161523475 | 0.2101911611 | 0.1866468858 | 0.1859104827 | 0.1799677971 | ...
 ... | ... | ... | ... | ... | ... | ...
 --- 
-```python
-Cohort.plot_curvatures(coloring_scheme='curvature') 
-```
+### plot_curvatures(coloring_scheme='curvature') 
 
 Plots the with traces in a given view and the curvature of each points in the trace in each frame. The traces can be 
 coloured according to the value of the curvature, or the frame number. This function also creates heatmaps showing the
@@ -282,9 +272,7 @@ Cohort.plot_curvatures(coloring_scheme='curvature')
 ![curvature](images/Heatmap.png "Segment vs time heatmap of curvature")
 
 --- 
-```python
-Cohort.plot_mean_curvature()
-```
+### plot_mean_curvature()
 
 Plots curvature, where for each point in the the trace a mean of the curvature over the full cycle is calculated.
 
@@ -296,9 +284,7 @@ Cohort.plot_mean_curvature()
 ![parabola](images/Mean_curvature.png "Mean curvature of the LV over the cardiac cycle")
 
 ---
-```python
-Cohort.plot_distributions(plot_data=False, plot_master=False, table_name=None) 
-```
+### plot_distributions(plot_data=False, plot_master=False, table_name=None) 
 
 Plots the distributions of the derived indices, for univariate and bivariate exploratory data analysis. 
 
@@ -310,8 +296,20 @@ exists)
 to 'master_table.csv',the function will plot bivariate interactions between the indices (provided that the 'master_table
 exists and different views indices are avaiable).
   
-_Examples:_ Univariate and bivariate plots 
+_Examples:_ 
+```python
+Cohort.plot_distributions(plot_data=True, table_name=all_cases_with_labels.csv)
+```
 
+![parabola](images/Distribution of index min.png "Single index distribution in 2 views")
+
+
+```python
+Cohort.plot_distributions(plot_data=True, table_name=all_cases_with_labels.csv)
+```
+
+![parabola](images/min_delta_vs_min_index2 plot with labels.png "Scatter plot with labels and linear regression with 
+confidence intervals")
 
 **Full example**
 

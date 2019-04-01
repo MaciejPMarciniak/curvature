@@ -5,7 +5,6 @@ import os
 import csv
 from curvature import Curvature
 from plotting import PlottingCurvature, PlottingDistributions
-import matplotlib.pyplot as plt
 from itertools import combinations
 
 

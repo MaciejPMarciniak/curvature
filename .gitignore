@@ -20,5 +20,8 @@
 # File-based project format:
 *.iws
 
+# Virtual environment
+venv/
+
 __pycache__/
 
