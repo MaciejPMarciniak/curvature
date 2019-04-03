@@ -16,10 +16,9 @@ class PlottingCurvature:
         self.source = source
         self.output_path = output_path
         self.data = ventricle.data
-        self.id = ventricle.id
+        self.id = ventricle.case_filename
         self.number_of_frames = ventricle.number_of_frames
         self.curvature = ventricle.ventricle_curvature
-        print('Curvature shape: {}'.format(self.curvature.shape))
         self.mean_curvature = ventricle.mean_curvature_over_time
         self.c_normalized = ventricle.vc_normalized
         self.mc_normalized = ventricle.mc_normalized

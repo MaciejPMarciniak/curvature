@@ -6,12 +6,14 @@ import csv
 from curvature import Curvature
 from plotting import PlottingCurvature, PlottingDistributions
 from itertools import combinations
+from scipy.interpolate import PchipInterpolator, interp1d
 
 
 class Trace:
 
-    def __init__(self, case_name, view):
+    def __init__(self, case_name, view, interpolation_parameters=()):
         self.case_name = case_name
+        self.case_filename = self.case_name.split('/')[-1][:-4]
         self.view = view
         self.id = None
         self.number_of_frames = 0
@@ -24,7 +26,8 @@ class Trace:
         self.apices = []
 
         self.data = self._read_echopac_output()
-        self.biomarkers = pd.DataFrame(index=[self.id])
+        self._interpolate_traces(trace_points_n=interpolation_parameters[0], time_steps_n=interpolation_parameters[1])
+        self.biomarkers = pd.DataFrame(index=[self.case_filename])
         self.get_curvature_per_frame()
         self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)  # ventricle_curvature normalized
         self.find_apices()
@@ -57,11 +60,47 @@ class Trace:
             areas[frame] = self._plane_area(x, y)
         self.es_frame, self.ed_frame = np.argmin(areas), np.argmax(areas)
 
+    def _interpolate_traces(self, trace_points_n=None, time_steps_n=None):
+
+        if trace_points_n is None:
+            point_interpolated = self.data
+
+        else:
+            x_time_steps, positions = np.arange(self.data.shape[0]), np.arange(self.data.shape[1]/2)
+
+            points_target = np.linspace(0, self.data.shape[1]/2-1, trace_points_n)
+            point_interpolated = np.zeros((self.data.shape[0], trace_points_n*2))
+
+            for trace in x_time_steps:
+                ci_x = interp1d(x=positions, y=self.data[trace, ::2], kind='cubic')
+                ci_y = interp1d(x=positions, y=self.data[trace, 1::2], kind='cubic')
+
+                point_interpolated[trace, ::2] = ci_x(points_target)
+                point_interpolated[trace, 1::2] = ci_y(points_target)
+
+            if time_steps_n is not None:
+                time_steps_target = np.linspace(0, self.data.shape[0] - 1, time_steps_n)
+                time_and_point_interpolated = np.zeros((time_steps_n, trace_points_n*2))
+
+                for point in range(trace_points_n*2):
+                    ci = interp1d(x=x_time_steps, y=point_interpolated[:, point], kind='cubic')
+                    time_interp = ci(time_steps_target)
+
+                    time_and_point_interpolated[:, point] = time_interp
+
+                point_interpolated = time_and_point_interpolated
+
+        print('Original resolution: {}, new resolution: {}'.format(self.data.shape, point_interpolated.shape))
+
+        self.number_of_frames, self.number_of_points = point_interpolated.shape
+        self.data = point_interpolated
+
     def get_curvature_per_frame(self):
         for frame in range(self.number_of_frames):
             xy = [[x, y] for x, y in zip(self.data[frame][::2], self.data[frame][1::2])]
             curva = Curvature(line=xy)
             self.ventricle_curvature.append(curva.calculate_curvature(gap=0))
+
         self.ventricle_curvature = np.array(self.ventricle_curvature)
 
     def get_mean_curvature_over_time(self):
@@ -260,7 +299,7 @@ class Cohort:
 
         for case in self.files:
             ven = Trace(case_name=case, view=self.view)
-            print(ven.id)
+            print(ven.case_filename)
             pd.DataFrame(ven.ventricle_curvature).to_csv(os.path.join(_output_path, ven.id+'.csv'))
 
     def save_indices(self):
@@ -305,8 +344,8 @@ class Cohort:
             _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature'))
 
         for case in self.files:
-            ven = Trace(case_name=case, view=self.view)
-            print(ven.id)
+            ven = Trace(case_name=case, view=self.view, interpolation_parameters=(1000, None))
+            print(ven.case_filename)
             print('Points: {}'.format(ven.number_of_points))
             plot_tool = PlottingCurvature(source=_source_path,
                                           output_path=_output_path,
@@ -315,7 +354,11 @@ class Cohort:
                 plot_tool.plot_mean_curvature()
             else:
                 plot_tool.plot_all_frames(coloring_scheme=coloring_scheme)
-                plot_tool.plot_heatmap()
+                # ven = Trace(case_name=case, view=self.view, interpolation_parameters=(500, 500))
+                # plot_tool = PlottingCurvature(source=_source_path,
+                #                               output_path=_output_path,
+                #                               ventricle=ven)
+                # plot_tool.plot_heatmap()
 
     def plot_distributions(self, plot_data=False, plot_master=False, table_name=None):
 
@@ -341,9 +384,9 @@ if __name__ == '__main__':
 
         # cohort.get_extemes(32)
         # cohort.plot_curvatures('asf')
-        # cohort.plot_curvatures(coloring_scheme='curvature', plot_mean=True)
         # cohort.save_curvatures()
-        cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
+        cohort.plot_curvatures(coloring_scheme='curvature', plot_mean=False)
+        # cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
         # cohort.print_names_and_ids(to_file=True)
         # cohort.get_statistics()
 
