@@ -6,7 +6,7 @@ import csv
 from curvature import Curvature
 from plotting import PlottingCurvature, PlottingDistributions
 from itertools import combinations
-from scipy.interpolate import PchipInterpolator, interp1d, splprep, splrep, splev
+from scipy.interpolate import interp1d, splprep, splev, Rbf
 
 
 class Trace:
@@ -69,22 +69,40 @@ class Trace:
             x_time_steps, positions = np.arange(self.data.shape[0]), np.arange(self.data.shape[1]/2)
 
             points_target = np.linspace(0, self.data.shape[1]/2-1, trace_points_n)
+            # points_target = np.linspace(0, 1, trace_points_n)
             point_interpolated = np.zeros((self.data.shape[0], trace_points_n*2))
 
             for trace in x_time_steps:
-                # ci_x = interp1d(x=positions, y=self.data[trace, ::2], kind='cubic')
-                # ci_y = interp1d(x=positions, y=self.data[trace, 1::2], kind='cubic')
+                # Cubic interpolation:
+                # ci_x = interp1d(x=positions, y=self.data[trace, ::2], kind=7)
+                # ci_y = interp1d(x=positions, y=self.data[trace, 1::2], kind=7)
                 #
                 # point_interpolated[trace, ::2] = ci_x(points_target)
                 # point_interpolated[trace, 1::2] = ci_y(points_target)
+                # -----
+                # Spline interpolation (varying smoothness, depnedant on the number of points in original trace
+                # (parameter s).
+                # points_target = np.linspace(0, 1, trace_points_n)
+                # tck, u = splprep([self.data[trace, ::2], self.data[trace, 1::2]])
+                # interpolation = splev(points_target, tck)
+                # point_interpolated[trace, ::2] = interpolation[0]
+                # point_interpolated[trace, 1::2] = interpolation[1]
+                # -----
+                # Radial basis function interpolation
+                # 'multiquadric': sqrt((r/self.epsilon)**2 + 1)
+                # 'inverse': 1.0/sqrt((r/self.epsilon)**2 + 1)
+                # 'gaussian': exp(-(r/self.epsilon)**2)
+                # 'linear': r
+                # 'cubic': r**3
+                # 'quintic': r**5
+                # 'thin_plate': r**2 * log(r)
+                rbf_x = Rbf(positions, self.data[trace, ::2], smooth=20, function='quintic')
+                rbf_y = Rbf(positions, self.data[trace, 1::2], smooth=20, function='quintic')
 
-                tck, u, _, _, _ = splprep([self.data[trace, ::2], self.data[trace, 1::2]], s=0)
-                interpolation = splev(u, tck)
-                print(interpolation)
-                point_interpolated[trace, ::2] = interpolation[0]
-                point_interpolated[trace, 1::2] = interpolation[1]
-                print(point_interpolated)
-                exit()
+                point_interpolated[trace, ::2] = rbf_x(points_target)
+                point_interpolated[trace, 1::2] = rbf_y(points_target)
+
+
 
             if time_steps_n is not None:
                 time_steps_target = np.linspace(0, self.data.shape[0] - 1, time_steps_n)
@@ -352,7 +370,7 @@ class Cohort:
             _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature'))
 
         for case in self.files:
-            ven = Trace(case_name=case, view=self.view, interpolation_parameters=(1000, None))
+            ven = Trace(case_name=case, view=self.view, interpolation_parameters=(500, None))
             print(ven.case_filename)
             print('Points: {}'.format(ven.number_of_points))
             plot_tool = PlottingCurvature(source=_source_path,
@@ -366,7 +384,7 @@ class Cohort:
                 # plot_tool = PlottingCurvature(source=_source_path,
                 #                               output_path=_output_path,
                 #                               ventricle=ven)
-                # plot_tool.plot_heatmap()
+                plot_tool.plot_heatmap()
 
     def plot_distributions(self, plot_data=False, plot_master=False, table_name=None):
 

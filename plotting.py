@@ -146,6 +146,9 @@ class PlottingCurvature:
 
         ax1.set_title('Geometric point-to-point curvature')
         ax1.axhline(y=0, c='k', ls='-.', lw=1)
+        ax1.axhline(y=-0.040, c='k', ls='-.', lw=1)
+        # ax1.axvline(x=25, c='k', ls='-.', lw=1)
+        # ax1.axvline(x=200, c='k', ls='-.', lw=1)
         ax1.set_ylim(-0.07, 0.14)
 
         # ax1.vlines(self.ed_apex_id+1, 0, max(self.curvature[:, self.ed_apex_id]), color='k', linestyles='-.', lw=1)
@@ -194,11 +197,12 @@ class PlottingCurvature:
             norm_curv = self._append_missing_curvature_values(self.c_normalized[self.ed_frame])
             if coloring_scheme == 'curvature':
 
-                color_tr = cm.coolwarm(norm_curv)
+                color_tr = cm.seismic(norm_curv)
                 color_tr[:, -1] = 0.3
                 color = cm.seismic(norm_curv)
+                # color[:, -1] = 0.01
                 size = 10
-                ax0.scatter(xx, yy, c=color_tr, edgecolor=color, marker='o', s=size)
+                ax0.scatter(xx, yy, c=color_tr, edgecolor=color, marker='o', s=size, alpha=0.01)
 
                 points = np.array([np.linspace(0, len(curv)-1, len(curv)), curv]).T.reshape(-1, 1, 2)
                 segments = np.concatenate([points[:-1], points[1:]], axis=1)
