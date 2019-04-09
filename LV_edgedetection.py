@@ -74,13 +74,12 @@ class Contour:
             if point[0] != cur_point[0] and point[1] != cur_point[1] and point not in self.sorted_edge:
                 return point, False
 
-        for point in touching_points:  # Due to segmentation faults, there are special cases - then chose
-            # point further from the previous point
+        for point in touching_points:
+            # Due to segmentation faults, there are special cases - then choose point further from the previous point
             if point[0] != previous_point[0] and point[1] != previous_point[1] \
                     and point not in self.sorted_edge:
                 return point, False
 
-        # print('Edge point found')
         return cur_point, True
 
     def _walk_on_edge(self, coordinates_of_edge):
