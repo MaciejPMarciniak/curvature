@@ -6,11 +6,7 @@ import csv
 from curvature import Curvature
 from plotting import PlottingCurvature, PlottingDistributions
 from itertools import combinations
-<<<<<<< HEAD
-from scipy.interpolate import interp1d, splprep, splrep, splev
-=======
 from scipy.interpolate import interp1d, splprep, splev, Rbf
->>>>>>> bb6d2d83e139c25e87097ab47fc2ca1c1ed62912
 
 
 class Trace:
@@ -77,18 +73,7 @@ class Trace:
             point_interpolated = np.zeros((self.data.shape[0], trace_points_n*2))
 
             for trace in x_time_steps:
-<<<<<<< HEAD
-                # ci_x = interp1d(x=positions, y=self.data[trace, ::2], kind='cubic')
-                # ci_y = interp1d(x=positions, y=self.data[trace, 1::2], kind='cubic')
-                #
-                # point_interpolated[trace, ::2] = ci_x(points_target)
-                # point_interpolated[trace, 1::2] = ci_y(points_target)
 
-                tck, u, _, _, _ = splprep([self.data[trace, ::2], self.data[trace, 1::2]], s=0)
-                point_interpolated[trace] = splev(u, tck)
-                print(point_interpolated)
-                exit()
-=======
                 # Cubic interpolation:
                 # ci_x = interp1d(x=positions, y=self.data[trace, ::2], kind=7)
                 # ci_y = interp1d(x=positions, y=self.data[trace, 1::2], kind=7)
@@ -117,9 +102,6 @@ class Trace:
 
                 point_interpolated[trace, ::2] = rbf_x(points_target)
                 point_interpolated[trace, 1::2] = rbf_y(points_target)
-
-
->>>>>>> bb6d2d83e139c25e87097ab47fc2ca1c1ed62912
 
             if time_steps_n is not None:
                 time_steps_target = np.linspace(0, self.data.shape[0] - 1, time_steps_n)
