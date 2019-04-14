@@ -3,15 +3,19 @@ import pandas as pd
 import glob
 import os
 import csv
+import pickle
+from itertools import combinations
+from scipy.interpolate import interp1d, Rbf
+from openvino.inference_engine import IENetwork, IEPlugin
+from PIL import Image
 from curvature import Curvature
 from plotting import PlottingCurvature, PlottingDistributions
-from itertools import combinations
-from scipy.interpolate import interp1d, splprep, splev, Rbf
+import matplotlib.pyplot as plt
 
 
 class Trace:
 
-    def __init__(self, case_name, view, interpolation_parameters=()):
+    def __init__(self, case_name, view, contours, interpolation_parameters=()):
         self.case_name = case_name
         self.case_filename = self.case_name.split('/')[-1][:-4]
         self.view = view
@@ -25,15 +29,16 @@ class Trace:
         self.mean_curvature_over_time = []
         self.apices = []
 
-        self.data = self._read_echopac_output()
-        self._interpolate_traces(trace_points_n=interpolation_parameters[0], time_steps_n=interpolation_parameters[1])
+        if contours is not None:
+            self.data = contours
+        else:
+            self.data = self._read_echopac_output()
+        self._interpolate_traces(trace_points_n=interpolation_parameters[0],
+                                 time_steps_n=interpolation_parameters[1])
         self.biomarkers = pd.DataFrame(index=[self.case_filename])
         self.get_curvature_per_frame()
-        self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)  # ventricle_curvature normalized
-        self.find_apices()
+        self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)
         self._find_ed_and_es_frame()
-        self.get_mean_curvature_over_time()
-        self.mc_normalized = self.get_normalized_curvature(self.mean_curvature_over_time)
 
     def _read_echopac_output(self):
         with open(self.case_name) as f:
@@ -51,6 +56,7 @@ class Trace:
 
     @staticmethod
     def _plane_area(x, y):
+        # TODO: replace with an alborithm which takes into account the fact that some LVs are not convex
         return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
     def _find_ed_and_es_frame(self):
@@ -66,14 +72,12 @@ class Trace:
             point_interpolated = self.data
 
         else:
-            x_time_steps, positions = np.arange(self.data.shape[0]), np.arange(self.data.shape[1]/2)
-
-            points_target = np.linspace(0, self.data.shape[1]/2-1, trace_points_n)
-            # points_target = np.linspace(0, 1, trace_points_n)
+            x_time_steps = np.arange(self.data.shape[0])
             point_interpolated = np.zeros((self.data.shape[0], trace_points_n*2))
 
             for trace in x_time_steps:
-
+                positions = np.arange(len(self.data[trace]))
+                points_target = np.linspace(0, len(self.data[trace]) - 1, trace_points_n)
                 # Cubic interpolation:
                 # ci_x = interp1d(x=positions, y=self.data[trace, ::2], kind=7)
                 # ci_y = interp1d(x=positions, y=self.data[trace, 1::2], kind=7)
@@ -90,13 +94,9 @@ class Trace:
                 # point_interpolated[trace, 1::2] = interpolation[1]
                 # -----
                 # Radial basis function interpolation
-                # 'multiquadric': sqrt((r/self.epsilon)**2 + 1)
-                # 'inverse': 1.0/sqrt((r/self.epsilon)**2 + 1)
-                # 'gaussian': exp(-(r/self.epsilon)**2)
-                # 'linear': r
-                # 'cubic': r**3
-                # 'quintic': r**5
-                # 'thin_plate': r**2 * log(r)
+                # 'quintic': r**5 where r is the distance from the next point
+                # smoothing should be adjusted to the number of original points, but there is no clear
+                # criterion
                 rbf_x = Rbf(positions, self.data[trace, ::2], smooth=20, function='quintic')
                 rbf_y = Rbf(positions, self.data[trace, 1::2], smooth=20, function='quintic')
 
@@ -396,21 +396,106 @@ class Cohort:
             self._plot_master()
 
 
+class PickleReader:
+
+    def __init__(self, source_path, output_path, model_path):
+        self.source_path = source_path
+        self.output_path = output_path
+        self.model_path = model_path
+        self.lookup_table = self._get_lookup_table()
+
+    def _get_lookup_table(self):
+        return pd.read_csv(os.path.join(self.source_path, 'image_seriessopid_lookup.csv'))
+
+    def _get_exec_net(self):
+        model_xml = os.path.join(self.model_path, 'model.xml')
+        model_bin = os.path.join(self.model_path, 'model.bin')
+        net = IENetwork(model=model_xml, weights=model_bin)
+        plugin = IEPlugin(device="CPU")
+        exec_net = plugin.load(network=net)
+        del net
+
+        return exec_net, plugin
+
+    def _segmentation_with_model(self, cycle_images):
+
+        exec_net, plugin = self._get_exec_net()
+
+        for img in cycle_images:
+            img_from_array = Image.fromarray(img.astype('uint8'), 'L')
+            img = img_from_array.resize((256, 256), Image.ANTIALIAS)
+            img_array = np.asarray(img) / 255  # Is it necessary?
+            exec_net.start_async(request_id=0, inputs={'input_image': img_array})
+
+            if exec_net.requests[0].wait(-1) == 0:
+                net_output = exec_net.requests[0].outputs['lambda_1/Reshape_1']
+                net_output = np.squeeze(net_output.transpose((2, 3, 1, 0)))
+                mask = np.argmax(net_output, axis=2)
+                scaling_factor = int(255 / np.max(mask))
+                image_mask = Image.fromarray(scaling_factor * np.uint8(mask), mode=img.mode)
+                image_mask = image_mask.resize((256, 256))
+                # TODO: Use this as an input to the Contour class or append to a new list and return
+                # TODO: to the master function
+
+                # TODO: Save only if it's beginning/middle/end
+                image_mask.save(os.path.join(self.output_path, 'Full_segmentation', image_file))
+
+        del exec_net
+        del plugin
+
+    def _find_trace_with_minimum_curvature(self, cycles_list):
+        pass
+        # TODO: Segmentation
+        # TODO: Contours
+        # TODO: Trace
+        # TODO: curvature comparison
+        # TODO: Append indices and save results
+
+    def read_images_and_get_indices(self):
+        pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
+        cases_4ch = {}
+        cycle_movies = []
+        for filename in pickles:  # list of the pickle files in the folder
+            data = pickle.load(open(filename, 'rb'))
+            for s_sopid in data.keys():  # list of Series SOP instance UIDs in a pickle file
+                print(s_sopid)
+                for item in data[s_sopid]:  # items of Series SOP instance UID entry
+                    if item['4CH'] and len(item['time_vector']) > 100:  # ->  Some of the movies were single frame (not 4CH)
+                        scanconv_movie = item['scanconv_movie']
+                        last_cycle_triggs = item['ecg_trigs'][-2:]
+                        last_cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector'])) for trig_time in last_cycle_triggs]
+                        cycle_movies.append(scanconv_movie[:, :, last_cycle_frames[0]:last_cycle_frames[1]+1])
+                        self._find_trace_with_minimum_curvature(cycle_movies)
+
+                cases_4ch[s_sopid] = cycle_movies
+
+        return cases_4ch
+
+
 if __name__ == '__main__':
 
-    source = os.path.join('/home/mat/Python/data/curvature')
-    target_path = os.path.join('/home/mat/Python/data/curvature/')
+    # Pickles
+    source = os.path.join('C:/', 'Users', '212686118', 'Desktop', 'CurveTest')
+    output = os.path.join('c:/', 'Users', '212686118', 'Desktop', 'CurveTest')
 
-    representatives = ('RV_4C.CSV', 'CAS0214_4C.CSV', 'DPJMA0472.CSV')
+    pick = PickleReader(source, output)
+    pick.read_images()
 
-    for _view in ['4C']:
-
-        cohort = Cohort(source_path=source, view=_view, output_path=target_path)
+    # ------------------------------------------------------------------------------------------------------------------
+    # Cohort
+    # source = os.path.join('home','mat','Python','data','curvature')
+    # target_path = os.path.join('home','mat','Python','data','curvature')
+    #
+    # representatives = ('RV_4C.CSV', 'CAS0214_4C.CSV', 'DPJMA0472.CSV')
+    #
+    # for _view in ['4C']:
+    #
+    #     cohort = Cohort(source_path=source, view=_view, output_path=target_path)
 
         # cohort.get_extemes(32)
         # cohort.plot_curvatures('asf')
         # cohort.save_curvatures()
-        cohort.plot_curvatures(coloring_scheme='curvature', plot_mean=False)
+        # cohort.plot_curvatures(coloring_scheme='curvature', plot_mean=False)
         # cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
         # cohort.print_names_and_ids(to_file=True)
         # cohort.get_statistics()
@@ -425,3 +510,4 @@ if __name__ == '__main__':
     # print(ven.ventricle_curvature.shape)
     # print(ven.number_of_points)
     # print(ven.number_of_frames)
+    # ------------------------------------------------------------------------------------------------------------------

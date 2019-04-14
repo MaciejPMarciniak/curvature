@@ -9,13 +9,16 @@ import cv2
 
 class Contour:
 
-    def __init__(self, segmentations_path, output_path):
+    def __init__(self, segmentations_path, output_path, segmentation_cycle_arrays):
         self.segmentations_path = segmentations_path
         self.output_path = self._check_directory(output_path)
-        self.seg_files = glob.glob(os.path.join(self.segmentations_path, '*.png'))
-        self.seg_files.sort()
+        self.segmentation_cycle_arrays = segmentation_cycle_arrays
+        if self.segmentations_path is not None:
+            self.seg_files = glob.glob(os.path.join(self.segmentations_path, '*.png'))
+            self.seg_files.sort()
         self.current_gray_mask = None
         self.sorted_edge = list()
+        self.all_cycles = None
 
     @staticmethod
     def _check_directory(directory):
@@ -136,22 +139,42 @@ class Contour:
         plt.savefig(os.path.join(out_dir, basename_file + '_ordered.png'))
         plt.clf()
 
+    def _lv_endo_edges(self, seg_mask):
+
+        # This resolution depends on the segmentation resolution. Perhaps could be better?
+        seg_mask = cv2.resize(seg_mask, (256, 256))
+        seg_mask_gray = cv2.cvtColor(seg_mask, cv2.COLOR_BGR2GRAY)
+
+        self.current_gray_mask = seg_mask_gray
+        current_lv_edge = self._extract_edge_image()
+        coord_lv = self._pair_coordinates(current_lv_edge)
+        coord_lv_ordered = self._walk_on_edge(coord_lv)
+
+        return coord_lv_ordered
+
     def lv_endo_edges(self):
 
-        for seg_file in self.seg_files:
+        if self.segmentations_path is not None:
+            for seg_file in self.seg_files:
+                print(seg_file)
+                seg_mask = cv2.imread(seg_file)
+                endo_coords = self._lv_endo_edges(seg_mask)
+                self._save_results(endo_coords, basename(seg_file)[:-4])
 
-            print(seg_file)
-            seg_mask = cv2.imread(seg_file)
-            # This resolution depends on the segmentation resolution. Perhaps could be better?
-            seg_mask = cv2.resize(seg_mask, (256, 256))
-            seg_mask_gray = cv2.cvtColor(seg_mask, cv2.COLOR_BGR2GRAY)
+        elif self.segmentation_cycle_arrays is not None:
+            all_cycles_coords = []
+            for cycle in self.segmentation_cycle_arrays:
+                n_frames = cycle.shape[2]
+                cycle_coords = []
+                for i in range(n_frames):
+                    endo_coords = self._lv_endo_edges(cycle[:, :, i])
+                    print('sorted_edge: {}'.format(self.sorted_edge))
+                    exit()
+                    endo_coords = [(x,) for x in endo_coords]
+                    cycle_coords.append(endo_coords)
+                all_cycles_coords.append(cycle_coords)
 
-            self.current_gray_mask = seg_mask_gray
-            current_lv_edge = self._extract_edge_image()
-            coord_lv = self._pair_coordinates(current_lv_edge)
-            _ = self._walk_on_edge(coord_lv)
-
-            self._save_results(current_lv_edge, basename(seg_file)[:-4])
+            self.all_cycles = all_cycles_coords
 
 
 if __name__ == '__main__':

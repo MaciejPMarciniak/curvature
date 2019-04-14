@@ -19,10 +19,11 @@ class PlottingCurvature:
         self.id = ventricle.case_filename
         self.number_of_frames = ventricle.number_of_frames
         self.curvature = ventricle.ventricle_curvature
-        self.mean_curvature = ventricle.mean_curvature_over_time
         self.c_normalized = ventricle.vc_normalized
-        self.mc_normalized = ventricle.mc_normalized
         self.es_frame, self.ed_frame = ventricle.es_frame, ventricle.ed_frame
+        self.mean_curvature = ventricle.get_mean_curvature_over_time()
+        self.mc_normalized = ventricle.get_normalized_curvature(self.mean_curvature)
+        ventricle.find_apices()
         self.es_apex = self.data[self.es_frame, ventricle.apex*2:ventricle.apex*2+2]
         self.ed_apex = self.data[self.ed_frame, ventricle.apex*2:ventricle.apex*2+2]
         self.ed_apex_id = ventricle.apex
@@ -78,6 +79,7 @@ class PlottingCurvature:
         fig.close()
 
     def plot_mean_curvature(self):
+
 
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(13, 8))
 
