@@ -9,6 +9,7 @@ from scipy.interpolate import interp1d, Rbf
 from openvino.inference_engine import IENetwork, IEPlugin
 from PIL import Image
 from curvature import Curvature
+from LV_edgedetection import Contour
 from plotting import PlottingCurvature, PlottingDistributions
 import matplotlib.pyplot as plt
 
@@ -35,7 +36,7 @@ class Trace:
             self.data = self._read_echopac_output()
         self._interpolate_traces(trace_points_n=interpolation_parameters[0],
                                  time_steps_n=interpolation_parameters[1])
-        self.biomarkers = pd.DataFrame(index=[self.case_filename])
+        self.biomarkers = pd.DataFrame(index=[self.case_name])
         self.get_curvature_per_frame()
         self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)
         self._find_ed_and_es_frame()
@@ -421,10 +422,11 @@ class PickleReader:
 
         exec_net, plugin = self._get_exec_net()
 
-        for img in cycle_images:
+        cycle_segmentations = []
+        for i, img in enumerate(cycle_images):
             img_from_array = Image.fromarray(img.astype('uint8'), 'L')
             img = img_from_array.resize((256, 256), Image.ANTIALIAS)
-            img_array = np.asarray(img) / 255  # Is it necessary?
+            img_array = np.asarray(img) / 255  # Is it necessary? Scalling can be done in the line above
             exec_net.start_async(request_id=0, inputs={'input_image': img_array})
 
             if exec_net.requests[0].wait(-1) == 0:
@@ -434,43 +436,70 @@ class PickleReader:
                 scaling_factor = int(255 / np.max(mask))
                 image_mask = Image.fromarray(scaling_factor * np.uint8(mask), mode=img.mode)
                 image_mask = image_mask.resize((256, 256))
-                # TODO: Use this as an input to the Contour class or append to a new list and return
-                # TODO: to the master function
-
-                # TODO: Save only if it's beginning/middle/end
-                image_mask.save(os.path.join(self.output_path, 'Full_segmentation', image_file))
+                cycle_segmentations.append(image_mask)
 
         del exec_net
         del plugin
+        return cycle_segmentations
 
-    def _find_trace_with_minimum_curvature(self, cycles_list):
-        pass
-        # TODO: Segmentation
-        # TODO: Contours
-        # TODO: Trace
-        # TODO: curvature comparison
-        # TODO: Append indices and save results
+    @staticmethod
+    def _find_trace_with_minimum_curvature(df):
+        return df['min'].idxmin(axis=0)
+
+    def _plot_relevant_cycle(self, trace):
+        plot_tool = PlottingCurvature(None, self.output_path, ventricle=trace)
+        plot_tool.plot_all_frames(coloring_scheme='curvature')
+        plot_tool.plot_heatmap()
+
+    def _from_images_to_indices(self, cycles_list, series_uid):
+
+        segmentation_list = []
+        for cycle in cycles_list:
+            segmentation_list.append(self._segmentation_with_model(cycle))  # list of segemntations of single cycle
+
+        contours = Contour(output_path=self.output_path, segmentation_cycle_arrays=segmentation_list)
+        contours.lv_endo_edges()
+        contours_list = contours.all_cycles
+
+        traces_dict = {}
+        df_biomarkers = pd.DataFrame()
+        for con_i, contours in enumerate(contours_list):
+            trace = Trace(case_name=series_uid+'_'+str(con_i), view='4CH', contours=contours,
+                          interpolation_parameters=(500, None))
+            df_biomarkers.loc[series_uid+'_'+str(con_i)] = trace.biomarkers
+            traces_dict[series_uid+'_'+str(con_i)] = trace
+
+        min_curvature_index = self._find_trace_with_minimum_curvature(df_biomarkers)
+        self._plot_relevant_cycle(traces_dict[min_curvature_index])
+
+        return df_biomarkers
 
     def read_images_and_get_indices(self):
         pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
-        cases_4ch = {}
-        cycle_movies = []
+
+        list_all_biomarkers = []
         for filename in pickles:  # list of the pickle files in the folder
             data = pickle.load(open(filename, 'rb'))
             for s_sopid in data.keys():  # list of Series SOP instance UIDs in a pickle file
                 print(s_sopid)
+                # cases_4ch = {}
+                cycle_movies = []
                 for item in data[s_sopid]:  # items of Series SOP instance UID entry
                     if item['4CH'] and len(item['time_vector']) > 100:  # ->  Some of the movies were single frame (not 4CH)
                         scanconv_movie = item['scanconv_movie']
                         last_cycle_triggs = item['ecg_trigs'][-2:]
                         last_cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector'])) for trig_time in last_cycle_triggs]
                         cycle_movies.append(scanconv_movie[:, :, last_cycle_frames[0]:last_cycle_frames[1]+1])
-                        self._find_trace_with_minimum_curvature(cycle_movies)
+                        list_all_biomarkers.append(self._from_images_to_indices(cycle_movies))
 
-                cases_4ch[s_sopid] = cycle_movies
+                # TODO: Figure out what is actually being returned/saved
 
-        return cases_4ch
+        return list_all_biomarkers
 
+    def extract_curvature_indices(self):
+        list_of_biomarkers = self.read_images_and_get_indices()
+        print(list_of_biomarkers)
+        print(len(list_of_biomarkers))
 
 if __name__ == '__main__':
 
@@ -479,7 +508,7 @@ if __name__ == '__main__':
     output = os.path.join('c:/', 'Users', '212686118', 'Desktop', 'CurveTest')
 
     pick = PickleReader(source, output)
-    pick.read_images()
+    pick.extract_curvature_indices()
 
     # ------------------------------------------------------------------------------------------------------------------
     # Cohort
