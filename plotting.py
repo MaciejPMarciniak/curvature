@@ -22,8 +22,8 @@ class PlottingCurvature:
         self.c_normalized = ventricle.vc_normalized
         self.es_frame, self.ed_frame = ventricle.es_frame, ventricle.ed_frame
         self.mean_curvature = ventricle.get_mean_curvature_over_time()
+
         self.mc_normalized = ventricle.get_normalized_curvature(self.mean_curvature)
-        ventricle.find_apices()
         self.es_apex = self.data[self.es_frame, ventricle.apex*2:ventricle.apex*2+2]
         self.ed_apex = self.data[self.ed_frame, ventricle.apex*2:ventricle.apex*2+2]
         self.ed_apex_id = ventricle.apex
@@ -38,7 +38,7 @@ class PlottingCurvature:
             y_ref = _ref[1]
         x_centered = self.data[_frame_number, ::2] - x_ref
         y_centered = self.data[_frame_number, 1::2] - y_ref
-
+        
         return x_centered, y_centered, (x_ref, y_ref)
 
     @staticmethod
@@ -79,7 +79,6 @@ class PlottingCurvature:
         fig.close()
 
     def plot_mean_curvature(self):
-
 
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(13, 8))
 
@@ -140,18 +139,17 @@ class PlottingCurvature:
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
 
         ax0.set_title('LV trace, full cycle'.format(self.id))
-        ax0.set_ylim(-20, 150)
-
+        ax0.set_ylim(-150, 20)
         ax0.set_xlim(-60, 60)
         ax0.set_xlabel('Short axis $[mm]$')
         ax0.set_ylabel('Long axis $[mm]$')
 
         ax1.set_title('Geometric point-to-point curvature')
         ax1.axhline(y=0, c='k', ls='-.', lw=1)
-        ax1.axhline(y=-0.040, c='k', ls='-.', lw=1)
+        # ax1.axhline(y=-0.040, c='k', ls='-.', lw=1)
         # ax1.axvline(x=25, c='k', ls='-.', lw=1)
         # ax1.axvline(x=200, c='k', ls='-.', lw=1)
-        ax1.set_ylim(-0.07, 0.14)
+        ax1.set_ylim(-0.10, 0.25)
 
         # ax1.vlines(self.ed_apex_id+1, 0, max(self.curvature[:, self.ed_apex_id]), color='k', linestyles='-.', lw=1)
         #  Added 1 to ed_apex_id because the plot is moved by one (due to lack of curvature at end points)
@@ -200,7 +198,7 @@ class PlottingCurvature:
             if coloring_scheme == 'curvature':
 
                 color_tr = cm.seismic(norm_curv)
-                color_tr[:, -1] = 0.3
+                color_tr[:, -1] = 0.7
                 color = cm.seismic(norm_curv)
                 # color[:, -1] = 0.01
                 size = 10
@@ -226,7 +224,7 @@ class PlottingCurvature:
         ax0.legend(handles=legend_elements0, loc='lower left', title='Cardiac cycle')
         ax1.legend(handles=legend_elements1, loc='upper right', title='Curvature')
 
-        norm = mpl.colors.Normalize(vmin=curv.min(), vmax=curv.max())
+        norm = mpl.colors.Normalize(vmin=-0.25, vmax=0.25)
         cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.seismic)
         cmap.set_array([norm])
         fig.colorbar(cmap)

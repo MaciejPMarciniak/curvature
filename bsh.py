@@ -15,6 +15,11 @@ from plotting import PlottingCurvature, PlottingDistributions
 import matplotlib.pyplot as plt
 
 
+def check_directory(directory):
+    if not os.path.isdir(directory):
+        os.mkdir(directory)
+    return directory
+
 class Trace:
 
     def __init__(self, case_name, view, contours, interpolation_parameters=()):
@@ -42,6 +47,7 @@ class Trace:
         print('CURVATURE_CALCULATED')
         self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)
         self._find_ed_and_es_frame()
+        self.find_apices()
         self.get_biomarkers()
         print('BIOMARKERS OBTAINED')
 
@@ -146,7 +152,7 @@ class Trace:
     def find_apices(self):
         for frame in range(self.number_of_frames):
             # self.apices.append(np.argmax(self.ventricle_curvature[frame]))  # Maximum curvature in given frame
-            self.apices.append(np.argmin(self.data[frame, 1::2]))  # Lowest point in given frame
+            self.apices.append(np.argmax(self.data[frame, 1::2]))  # Lowest point in given frame
         values, counts = np.unique(self.apices, return_counts=True)
         self.apex = values[np.argmax(counts)]  # Lowest point in all frames
         # self.apex = self.apices[self.ed_frame]  # Lowest point at end diastole
@@ -473,24 +479,24 @@ class PickleReader:
         plot_tool.plot_heatmap()
 
     def _from_images_to_indices(self, cycles_list, series_uid):
-
+        """
+        The main function to control the flow and call:
+        1. Segmentation, which returns a list of lists (one for each cycle) of masks (one for each image).
+        2. Contouring, which returns a list of lists (one for each cycle) of tuples (with ordered (x,y)
+        positions of the trace.
+        3. Trace, which returns the data frame with all recorded biomarkers from the provided cycles.
+        :param cycles_list:
+        :param series_uid:
+        :return:
+        """
         segmentation_list = []
         for cycle in cycles_list:
             print('cycle_length: {}'.format(cycle.shape[2]))
             segmentation_list.append(self._segmentation_with_model(cycle))  # list of segemntations of single cycle
 
-
         contours = Contour(segmentations_path=None, output_path=self.output_path, segmentation_cycle_arrays=segmentation_list)
         contours.lv_endo_edges()
         contours_list = contours.all_cycles
-
-        # Plotting: contour of LV on the image
-        for j in range(len(segmentation_list)):
-            for i in range(len(segmentation_list[j])):
-                plt.imshow(segmentation_list[j][i])
-                plt.plot([x[0] for x in contours_list[j][i]], [-y[1] for y in contours_list[j][i]], 'r')
-                plt.savefig(os.path.join(self.output_path, 'Seg_cont', 'Seg_cont_{}_{}'.format(j, i)))
-                plt.clf()
 
         traces_dict = {}
         df_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t'])
@@ -505,6 +511,22 @@ class PickleReader:
         min_curvature_index = self._find_trace_with_minimum_curvature(df_biomarkers)
         self._plot_relevant_cycle(traces_dict[min_curvature_index[0]])
 
+        # Plotting: contour of LV on the image and mask
+        min_curv_cycle = int(min_curvature_index[0].split('_')[-1])
+        img_dir = check_directory(os.path.join(self.output_path, 'Seg_cont', min_curvature_index[0]))
+
+        for i in range(len(segmentation_list[min_curv_cycle])):
+            plt.subplot(121)
+            plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
+            plt.imshow(np.array(segmentation_list[min_curv_cycle][i]), cmap='YlOrBr', alpha=0.2)
+            # plt.show()
+            plt.subplot(122)
+            plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
+            plt.plot([x[0] for x in contours_list[min_curv_cycle][i]],
+                     [-y[1] for y in contours_list[min_curv_cycle][i]], 'r')
+            plt.savefig(os.path.join(img_dir, 'Seg_cont_{}'.format(i)))
+            plt.clf()
+
         return df_biomarkers
 
     def read_images_and_get_indices(self):
@@ -517,25 +539,24 @@ class PickleReader:
                 print(filename)
                 for s_sopid in data.keys():  # list of Series SOP instance UIDs in a pickle file
                     print(s_sopid)
-                    # cases_4ch = {}
                     cycle_movies = []
                     for i, item in enumerate(data[s_sopid]):  # items of Series SOP instance UID entry
                         if item['RDCM_viewlabel'] == '4CH' and \
                                 len(item['time_vector']) > 1 and \
-                                item['scanconv_movie'].shape[2] > 1:
-                                # and i < 5:
+                                item['scanconv_movie'].shape[2] > 1\
+                                and i < 6:
                             # Some of the movies were single frame or no time vector stored
-                            print(i)
                             scanconv_movie = item['scanconv_movie']
-                            print('len time vector: {}'.format(len(item['time_vector'])))
-                            print('number of frames in a movie: {}'.format(scanconv_movie.shape))
-                            # Plotting              # plt.imshow(scanconv_movie[:, :, 0], cmap='gray')
-                            # plt.show()
                             last_cycle_triggs = item['ecg_trigs'][-2:]
-                            print('ECG_TRIGS: {}'.format(item['ecg_trigs']))
-                            print('last cycle trigs: {}'.format(last_cycle_triggs))
                             last_cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector'])) for trig_time in last_cycle_triggs]
                             cycle_movies.append(scanconv_movie[:, :, last_cycle_frames[0]:last_cycle_frames[1]+1])
+                            print(i)
+                            print('len time vector: {}'.format(len(item['time_vector'])))
+                            print('number of frames in a movie: {}'.format(scanconv_movie.shape))
+                            print('ECG_TRIGS: {}'.format(item['ecg_trigs']))
+                            print('last cycle trigs: {}'.format(last_cycle_triggs))
+                            # Plotting              # plt.imshow(scanconv_movie[:, :, 0], cmap='gray')
+                            # plt.show()
 
                     print('cycle_movies: {}'.format(len(cycle_movies)))
                     list_all_biomarkers = list_all_biomarkers.append(self._from_images_to_indices(cycle_movies, s_sopid))
@@ -544,10 +565,9 @@ class PickleReader:
             if f == 2:
                 return list_all_biomarkers
 
-
     def extract_curvature_indices(self):
         list_of_biomarkers = self.read_images_and_get_indices()
-        list_of_biomarkers.to_csv(os.path.join(self.output_path, 'all_biomarkers'))
+        list_of_biomarkers.to_csv(os.path.join(self.output_path, 'all_biomarkers.csv'))
         # TODO: produce joint data frame and save to .csv file
         print(list_of_biomarkers)
         print(len(list_of_biomarkers))
