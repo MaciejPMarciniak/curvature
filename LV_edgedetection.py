@@ -4,6 +4,7 @@ from ntpath import basename
 import argparse
 import numpy as np
 from matplotlib import pyplot as plt
+from scipy.signal import savgol_filter
 import cv2
 
 
@@ -65,7 +66,7 @@ class Contour:
         touching_points = list()
         for i in [cur_point[0]-1, cur_point[0], cur_point[0]+1]:
             for j in [cur_point[1]-1, cur_point[1], cur_point[1]+1]:
-                if [i, j] in coordinates_of_edge and\
+                if [i, j] in coordinates_of_edge and \
                         np.all((i, j) != cur_point) and \
                         np.all((i, j) != previous_point):
                     touching_points.append((i, j))
@@ -85,6 +86,52 @@ class Contour:
 
         return cur_point, True
 
+    @staticmethod
+    def smooth(x, window_len=15, window='hanning'):
+        """smooth the data using a window with requested size.
+        This method is based on the convolution of a scaled window with the signal.
+        The signal is prepared by introducing reflected copies of the signal
+        (with the window size) in both ends so that transient parts are minimized
+        in the begining and end part of the output signal.
+
+        input:
+            x: the input signal
+            window_len: the dimension of the smoothing window; should be an odd integer
+            window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
+                flat window will produce a moving average smoothing.
+
+        output:
+            the smoothed signal
+
+        example:
+
+        t=linspace(-2,2,0.1)
+        x=sin(t)+randn(len(t))*0.1
+        y=smooth(x)
+        """
+
+        if x.ndim != 1:
+            exit("smooth only accepts 1 dimension arrays.")
+
+        if x.size < window_len:
+            exit("Input vector needs to be bigger than window size.")
+
+        if window_len < 3:
+            return x
+
+        if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+            exit("Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
+
+        s = np.r_[x[window_len - 1:0:-1], x, x[-2:-window_len - 1:-1]]
+        # print(len(s))
+
+        if window == 'flat':  # moving average
+            w = np.ones(window_len, 'd')
+        else:
+            w = eval('np.' + window + '(window_len)')
+        y = np.convolve(w / w.sum(), s, mode='valid')
+        return y
+
     def _walk_on_edge(self, coordinates_of_edge):
         """
         Since the ventricle is usually not convex, using radial coordinates can be misleading. A simple search
@@ -94,7 +141,7 @@ class Contour:
         """
         self.sorted_edge = list()
         edge_points = list()
-        cur_point = tuple(min(coordinates_of_edge, key=lambda x: x[1]))
+        cur_point = tuple(max(coordinates_of_edge, key=lambda x: x[1]))
         prev_point = cur_point
         self.sorted_edge.append(cur_point)
         while 1:
@@ -122,8 +169,29 @@ class Contour:
         basal_septal_edge = min(edge_points, key=lambda x: x[0])
         if basal_septal_edge != self.sorted_edge[0]:
             self.sorted_edge.reverse()
+        se_x = self._expand_edge(np.array([x[0] for x in self.sorted_edge]))
+        se_y = self._expand_edge(np.array([y[1] for y in self.sorted_edge]))
+        interp_se_x = self.smooth(se_x)[7:-7]
+        interp_se_y = self.smooth(se_y)[7:-7]
 
-        return np.array(self.sorted_edge)
+        # plt.scatter(range(len(se_x)), se_x)
+        # plt.plot(interp_se_x, 'r', lw=3)
+
+        smooth_se_x = savgol_filter(interp_se_x, 11, polyorder=3, mode='interp')[13:-13]
+        smooth_se_y = savgol_filter(interp_se_y, 11, polyorder=3, mode='interp')[13:-13]
+
+        # plt.plot(range(13, len(smooth_se_x)+13), smooth_se_x, 'g')
+        # plt.show()
+
+        self.sorted_edge = [(x, y) for x, y in zip(smooth_se_x, smooth_se_y)]
+
+        return self.sorted_edge
+
+    @staticmethod
+    def _expand_edge(sorted_edge_axis):
+        beg_ = np.ones(10) * sorted_edge_axis[0]
+        end_ = np.ones(10) * sorted_edge_axis[-1]
+        return np.concatenate((beg_, sorted_edge_axis, end_))
 
     def _save_results(self, cur_edge, basename_file):
         out_dir = self._check_directory(os.path.join(self.output_path, 'Contour_tables'))
@@ -141,14 +209,26 @@ class Contour:
 
     def _lv_endo_edges(self, seg_mask):
 
-        # This resolution depends on the segmentation resolution. Perhaps could be better?
-        seg_mask = cv2.resize(seg_mask, (256, 256))
-        seg_mask_gray = cv2.cvtColor(seg_mask, cv2.COLOR_BGR2GRAY)
+        if np.any(seg_mask.size != (256, 256)):
+            print(seg_mask.size)
+            seg_mask = cv2.resize(np.array(seg_mask), (256, 256))
 
+        if seg_mask.size == (256, 256, 3):
+            seg_mask_gray = cv2.cvtColor(np.array(seg_mask), cv2.COLOR_BGR2GRAY)
+        else:
+            seg_mask_gray = np.array(seg_mask)
+        # Plotting # plt.imshow(seg_mask)
+        # plt.show()
         self.current_gray_mask = seg_mask_gray
         current_lv_edge = self._extract_edge_image()
         coord_lv = self._pair_coordinates(current_lv_edge)
         coord_lv_ordered = self._walk_on_edge(coord_lv)
+        if len(coord_lv_ordered) < 100:
+            plt.subplot(121)
+            plt.imshow(seg_mask)
+            plt.subplot(122)
+            plt.imshow(current_lv_edge)
+            plt.show()
 
         return coord_lv_ordered
 
@@ -164,14 +244,14 @@ class Contour:
         elif self.segmentation_cycle_arrays is not None:
             all_cycles_coords = []
             for cycle in self.segmentation_cycle_arrays:
-                n_frames = cycle.shape[2]
+                print('length of the cycle: {}'.format(len(cycle)))
+
                 cycle_coords = []
-                for i in range(n_frames):
-                    endo_coords = self._lv_endo_edges(cycle[:, :, i])
-                    print('sorted_edge: {}'.format(self.sorted_edge))
-                    exit()
-                    endo_coords = [(x,) for x in endo_coords]
-                    cycle_coords.append(endo_coords)
+                for seg_img in cycle:
+                    endo_coords = self._lv_endo_edges(seg_img)
+                    print('len of edge: {}'.format(len(self.sorted_edge)))
+                    cycle_coords.append(endo_coords[::3])
+                print(len(cycle_coords))
                 all_cycles_coords.append(cycle_coords)
 
             self.all_cycles = all_cycles_coords

@@ -140,9 +140,9 @@ class PlottingCurvature:
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
 
         ax0.set_title('LV trace, full cycle'.format(self.id))
-        ax0.set_ylim(-85, 5)
+        ax0.set_ylim(-20, 150)
 
-        ax0.set_xlim(-30, 55)
+        ax0.set_xlim(-60, 60)
         ax0.set_xlabel('Short axis $[mm]$')
         ax0.set_ylabel('Long axis $[mm]$')
 
@@ -160,13 +160,13 @@ class PlottingCurvature:
 
         if coloring_scheme == 'curvature':
             xx, yy, _ = self._get_translated_element(self.ed_frame, self.ed_apex)
-            yy *= -1
+            # yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[self.ed_frame])
             ax0.plot(xx, yy, 'k--', lw=3)
             ax1.plot(curv, '--', c='black', lw=2)
 
             xx, yy, _ = self._get_translated_element(self.es_frame, self.ed_apex)
-            yy *= -1
+            # yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[self.es_frame])
             ax0.plot(xx, yy, 'k:', lw=3)
             ax1.plot(curv, ':', c='black', lw=2)
@@ -194,7 +194,7 @@ class PlottingCurvature:
         for frame_number in range(self.number_of_frames):
 
             xx, yy, _ = self._get_translated_element(frame_number, self.ed_apex)
-            yy *= -1
+            # yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[frame_number])
             norm_curv = self._append_missing_curvature_values(self.c_normalized[self.ed_frame])
             if coloring_scheme == 'curvature':
@@ -228,11 +228,14 @@ class PlottingCurvature:
 
         norm = mpl.colors.Normalize(vmin=curv.min(), vmax=curv.max())
         cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.seismic)
-        cmap.set_array([])
+        cmap.set_array([norm])
         fig.colorbar(cmap)
         fig.suptitle('Geometric curvature in the trace of LV')
         # fig.tight_layout()
-        fig.savefig(fname=os.path.join(self.output_path, '{}_colour_by_{}'.format(self.id, ext)))
+        if '.' in self.id:
+            self.id = self.id.replace('.', '_')
+        print(os.path.join(self.output_path, '{}_colour_by_{}.png'.format(self.id,ext)))
+        fig.savefig(fname=os.path.join(self.output_path, '{}_colour_by_{}.png'.format(self.id, ext)))
         plt.close()
 
     def plot_heatmap(self):
@@ -241,7 +244,7 @@ class PlottingCurvature:
         fig.set_title('Curvature heatmap')
         apex_pos = int(self.curvature.shape[1]/2)
         b_al_pos = self.curvature.shape[1] - 1
-        plt.yticks([1, apex_pos, b_al_pos], ['Basal\ninferoseptal', 'Apical', 'Basal\nanteroseptal'],
+        plt.yticks([1, apex_pos, b_al_pos], ['Basal\ninferoseptal', 'Apical', 'Basal\nanterolateral'],
                    rotation='horizontal')
         plt.xticks([int(self.curvature.shape[0]/2)], ['Time'], rotation='horizontal')
         plt.tick_params(axis=u'both', which=u'both', length=0)
