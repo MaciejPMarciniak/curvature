@@ -38,7 +38,7 @@ class PlottingCurvature:
             y_ref = _ref[1]
         x_centered = self.data[_frame_number, ::2] - x_ref
         y_centered = self.data[_frame_number, 1::2] - y_ref
-        
+
         return x_centered, y_centered, (x_ref, y_ref)
 
     @staticmethod
@@ -198,7 +198,7 @@ class PlottingCurvature:
             if coloring_scheme == 'curvature':
 
                 color_tr = cm.seismic(norm_curv)
-                color_tr[:, -1] = 0.7
+                color_tr[:, -1] = 0.9
                 color = cm.seismic(norm_curv)
                 # color[:, -1] = 0.01
                 size = 10

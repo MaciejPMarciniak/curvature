@@ -7,6 +7,7 @@ import pickle
 import cv2
 from itertools import combinations
 from scipy.interpolate import interp1d, Rbf
+from pykalman import KalmanFilter
 from openvino.inference_engine import IENetwork, IEPlugin
 from PIL import Image
 from curvature import Curvature
@@ -20,9 +21,10 @@ def check_directory(directory):
         os.mkdir(directory)
     return directory
 
+
 class Trace:
 
-    def __init__(self, case_name, view, contours, interpolation_parameters=()):
+    def __init__(self, case_name, contours, interpolation_parameters=(), view='4C'):
         self.case_name = case_name
         self.case_filename = self.case_name.split('/')[-1][:-4]
         self.view = view
@@ -165,15 +167,16 @@ class Trace:
 
         curv = pd.DataFrame(data=self.ventricle_curvature)
 
-        curv_max_col = curv.max(axis=0).idxmax()
-
         if self.view == '2C':
             curv_min_col = curv.min(axis=0).idxmin()
             curv_min_row = curv.min(axis=1).idxmin()
+            lower_bound = 0
+            upper_bound = len(curv.columns)
         else:
             _t = int(self.view == '4C')
             lower_bound = int(np.round((_t * 0.04 + (1 - _t) * 0.6) * len(curv.columns)))
             upper_bound = int(np.round((_t * 0.4 + (1 - _t) * 0.96) * len(curv.columns)))
+            print('lower bound: {}, upper bound: {}'.format(lower_bound, upper_bound))
 
             # id of the column (point number) with minimum value
             curv_min_col = curv.loc[:, lower_bound:upper_bound].min(axis=0).idxmin()
@@ -181,8 +184,10 @@ class Trace:
             # id of the row (frame) with minimum value
             curv_min_row = curv.loc[:, lower_bound:upper_bound].min(axis=1).idxmin()
 
-        self.biomarkers['min'] = curv.min().min()
-        self.biomarkers['max'] = curv.max().max()
+        curv_max_col = curv.loc[:, int(3/4*upper_bound):int(7/4*upper_bound)].max(axis=0).idxmax()
+
+        self.biomarkers['min'] = curv.loc[:, lower_bound:upper_bound].min().min()
+        self.biomarkers['max'] = curv.loc[:, int(3/4*upper_bound):int(7/4*upper_bound)].max().max()
         self.biomarkers['min_delta'] = np.abs(curv[curv_min_col].max() - self.biomarkers['min'])
         self.biomarkers['max_delta'] = np.abs(curv[curv_max_col].min() - self.biomarkers['max'])
         self.biomarkers['amplitude_at_t'] = np.abs(curv.loc[curv_min_row].max() - self.biomarkers['min'])
@@ -434,6 +439,35 @@ class PickleReader:
 
         return exec_net, plugin
 
+    @staticmethod
+    def _find_extreme_coordinates(mask, segment_value):
+        positions = np.where(mask == segment_value)
+        min_y, min_x = [np.min(p) for p in positions]
+        max_y, max_x = [np.max(p) for p in positions]
+
+        return min_x, min_y, max_x, max_y
+
+    def _check_mask_quality(self, mask):
+
+        values, counts = np.unique(mask, return_counts=True)  # retruned array is sorted
+        # print(values)
+        # print(counts)
+        atrium_bp_ratio = counts[3]/counts[1]
+        atrium_lv_ratio = counts[3]/(counts[1]+counts[2])
+        # print('atrium_bp_ratio: {}, atrium_lv_ratio: {}'.format(atrium_bp_ratio, atrium_lv_ratio))
+        min_bpx, min_bpy, max_bpx, max_bpy = self._find_extreme_coordinates(mask, values[1])
+        min_myox, min_myoy, max_myox, max_myoy = self._find_extreme_coordinates(mask, values[2])
+        distances = (np.abs(min_bpx - min_myox),
+                     np.abs(min_bpy - min_myoy),
+                     np.abs(max_bpx - max_myox),
+                     np.abs(max_bpy - max_myoy))
+        print('minx: {}, miny: {}, maxx: {}, maxy: {}'.format(*distances))
+        # print('min_bpx: {}, min_bpy: {}, max_bpx: {}, max_bpy: {}'.format(min_bpx, min_bpy, max_bpx, max_bpy))
+        # plt.imshow(mask)
+        # plt.scatter([min_bpx, max_bpx], [min_bpy, max_bpy], c='red')
+        # plt.show()
+        return atrium_bp_ratio
+
     def _segmentation_with_model(self, cycle_images):
 
         exec_net, plugin = self._get_exec_net()
@@ -442,7 +476,7 @@ class PickleReader:
         # for i in range(cycle_images.shape[2]):
         #     img = cycle_images[:, :, i]
         #     np.savetxt(os.path.join(self.output_path, 'image_'+str(i)+'.csv'), img, fmt='%.e3', delimiter=',')
-
+        ratios = []
         for i in range(cycle_images.shape[2]):
             img = cycle_images[:, :, i]
             img_from_array = Image.fromarray(img.astype('uint8'), 'L').transpose(Image.FLIP_LEFT_RIGHT)
@@ -460,9 +494,13 @@ class PickleReader:
                 scaling_factor = int(255 / np.max(mask))
                 image_mask = Image.fromarray(scaling_factor * np.uint8(mask), mode=img.mode)
                 image_mask = image_mask.resize((256, 256))
+                # ratios.append(self._check_mask_quality(np.array(image_mask)))
+
                 # Plotting      # plt.imshow(image_mask)
                 # plt.show()
                 cycle_segmentations.append(image_mask)
+        # plt.plot(ratios)
+        # plt.show()
 
         del exec_net
         del plugin
@@ -472,6 +510,25 @@ class PickleReader:
     @staticmethod
     def _find_trace_with_minimum_curvature(df):
         return df[['min']].idxmin(axis=0)
+
+    def _apply_kalman(self, curvature):
+        tran = np.eye(2 * curvature.shape[1], 2 * curvature.shape[1])
+        obs = np.zeros((int(tran.shape[0] / 2), tran.shape[0]))
+        init_mean = np.zeros(2 * curvature.shape[1])
+        for i in range(tran.shape[1] - 1):
+            print(i)
+            tran[i, i + 1] = 1
+            if not i % 2:
+                obs[int(i / 2), i] = 1
+                init_mean[i] = curvature[0][int(i / 2)]
+        print(tran[:10, :10])
+        print(obs[:10, :10])
+        print(init_mean[:10])
+        kf = KalmanFilter(transition_matrices=tran,
+                          observation_matrices=obs,
+                          initial_state_mean=init_mean)
+
+        curvature, _ = kf.em(curvature).smooth(curvature)
 
     def _plot_relevant_cycle(self, trace):
         plot_tool = PlottingCurvature(None, self.output_path, ventricle=trace)
@@ -494,7 +551,8 @@ class PickleReader:
             print('cycle_length: {}'.format(cycle.shape[2]))
             segmentation_list.append(self._segmentation_with_model(cycle))  # list of segemntations of single cycle
 
-        contours = Contour(segmentations_path=None, output_path=self.output_path, segmentation_cycle_arrays=segmentation_list)
+        contours = Contour(segmentations_path=None, output_path=self.output_path,
+                           segmentation_cycle_arrays=segmentation_list)
         contours.lv_endo_edges()
         contours_list = contours.all_cycles
 
@@ -502,7 +560,7 @@ class PickleReader:
         df_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t'])
 
         for con_i, contours in enumerate(contours_list):
-            trace = Trace(case_name=series_uid+'_'+str(con_i), view='4CH', contours=contours,
+            trace = Trace(case_name=series_uid+'_'+str(con_i), contours=contours,
                           interpolation_parameters=(500, None))
             df_biomarkers = df_biomarkers.append(trace.biomarkers)
             traces_dict[series_uid+'_'+str(con_i)] = trace
@@ -543,7 +601,7 @@ class PickleReader:
                     for i, item in enumerate(data[s_sopid]):  # items of Series SOP instance UID entry
                         if item['RDCM_viewlabel'] == '4CH' and \
                                 len(item['time_vector']) > 1 and \
-                                item['scanconv_movie'].shape[2] > 1\
+                                item['scanconv_movie'].shape[2] > 1 \
                                 and i < 6:
                             # Some of the movies were single frame or no time vector stored
                             scanconv_movie = item['scanconv_movie']
