@@ -635,7 +635,10 @@ class PickleReader:
         biomarkers_dir = check_directory(os.path.join(self.output_path, 'biomarkers'))
         df_biomarkers.to_csv(os.path.join(biomarkers_dir, '{}.csv'.format(series_uid)))
 
-        print(df_biomarkers)
+        if np.all(df_biomarkers['min'].nunique() == 1):
+            self._print_error_file_cycles()
+            return df_biomarkers
+
         min_curvature_index = self._find_trace_with_minimum_curvature(df_biomarkers[df_biomarkers])
         self._plot_relevant_cycle(traces_dict[min_curvature_index[0]])
 
@@ -682,23 +685,32 @@ class PickleReader:
                 plt.clf()
         plt.close()
 
-    def _print_error_file(self, cause):
-        error_file_dir = check_directory(os.path.join(self.output_path, self.s_sopid))
-        txt_file = open(os.path.join(error_file_dir, cause[0]), 'w')
+    def _print_error_file_pickle(self, cause):
+        print('Pickle integrity corrupted')
+        error_file_dir = check_directory(os.path.join(self.output_path, 'failed_qc', self.s_sopid))
+        txt_file = open(os.path.join(error_file_dir, '{}.txt'.format(cause[0])), 'w+')
         txt_file.write('At least one of the relevant fields in the pickle {} is missing: {}'.format(cause[0], cause[1]))
         txt_file.close()
+
+    def _print_error_file_cycles(self):
+            print('No usable cycles found')
+            error_file_dir = check_directory(os.path.join(self.output_path, 'failed_qc', self.s_sopid))
+            txt_file = open(os.path.join(error_file_dir, '{}.txt'.format(self.s_sopid)), 'w+')
+            txt_file.write(
+                'No usable cycles found in case {}'.format(self.s_sopid))
+            txt_file.close()
 
     def _check_pickle_integrity(self, item, filename):
         item_fields = ['RDCM_viewlabel', 'time_vector', 'scanconv_movie', 'ecg_trigs']
         for field in item_fields:
             if item[field] is None:
-                self._print_error_file((filename, field))
+                self._print_error_file_pickle((filename, field))
                 return False
         return True
 
     def read_images_and_get_indices(self):
         pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
-        pickles = [os.path.join(self.source_path, 'CurveData_DATA_CM193022.pck')]
+        # pickles = [os.path.join(self.source_path, 'CurveData_DATA_CM193022.pck')]
 
         list_all_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t'])
         for f, filename in enumerate(pickles):  # list of the pickle files in the folder
