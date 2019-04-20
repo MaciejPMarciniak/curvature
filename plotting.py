@@ -147,8 +147,8 @@ class PlottingCurvature:
         ax1.set_title('Geometric point-to-point curvature')
         ax1.axhline(y=0, c='k', ls='-.', lw=1)
         # ax1.axhline(y=-0.040, c='k', ls='-.', lw=1)
-        # ax1.axvline(x=25, c='k', ls='-.', lw=1)
-        # ax1.axvline(x=200, c='k', ls='-.', lw=1)
+        ax1.axvline(x=20, c='k', ls='-.', lw=1)
+        ax1.axvline(x=150, c='k', ls='-.', lw=1)
         ax1.set_ylim(-0.10, 0.25)
 
         # ax1.vlines(self.ed_apex_id+1, 0, max(self.curvature[:, self.ed_apex_id]), color='k', linestyles='-.', lw=1)
@@ -232,7 +232,7 @@ class PlottingCurvature:
         # fig.tight_layout()
         if '.' in self.id:
             self.id = self.id.replace('.', '_')
-        print(os.path.join(self.output_path, '{}_colour_by_{}.png'.format(self.id,ext)))
+        print(os.path.join(self.output_path, '{}_colour_by_{}.png'.format(self.id, ext)))
         fig.savefig(fname=os.path.join(self.output_path, '{}_colour_by_{}.png'.format(self.id, ext)))
         plt.close()
 
@@ -240,21 +240,21 @@ class PlottingCurvature:
 
         fig = sns.heatmap(self.curvature.T, vmax=0.125, vmin=-0.07, center=0, cmap='seismic')
         fig.set_title('Curvature heatmap')
-        apex_pos = int(self.curvature.shape[1]/2)
+        apex_pos = int(self.curvature.shape[1] / 2)
         b_al_pos = self.curvature.shape[1] - 1
         plt.yticks([1, apex_pos, b_al_pos], ['Basal\ninferoseptal', 'Apical', 'Basal\nanterolateral'],
                    rotation='horizontal')
-        plt.xticks([int(self.curvature.shape[0]/2)], ['Time'], rotation='horizontal')
+        plt.xticks([int(self.curvature.shape[0] / 2)], ['Time'], rotation='horizontal')
         plt.tick_params(axis=u'both', which=u'both', length=0)
         plt.tight_layout()
         plt.savefig(fname=os.path.join(self.output_path, 'Heatmap of {}'.format(self.id)))
         plt.close()
 
-# -----END-VentricleVisualization---------------------------------------------------------------------------------------
+# -----END-VentricleVisualization-----------------------------------------------------------------------------
 
 
 class PlottingDistributions:
-    # -----DistributionVisualization------------------------------------------------------------------------------------
+    # -----DistributionVisualization--------------------------------------------------------------------------
 
     def __init__(self, df, series, output_path):
         self.df = df

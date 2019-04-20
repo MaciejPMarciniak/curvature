@@ -5,6 +5,7 @@ import os
 import csv
 import pickle
 import cv2
+import shutil
 from itertools import combinations
 from scipy.interpolate import interp1d, Rbf
 from pykalman import KalmanFilter
@@ -147,7 +148,6 @@ class Trace:
         self.ventricle_curvature = np.array(self.ventricle_curvature)
 
     def get_mean_curvature_over_time(self):
-        print(self.ventricle_curvature)
         self.mean_curvature_over_time = np.mean(self.ventricle_curvature, axis=0)
         return self.mean_curvature_over_time
 
@@ -157,7 +157,6 @@ class Trace:
             self.apices.append(np.argmax(self.data[frame, 1::2]))  # Lowest point in given frame
         values, counts = np.unique(self.apices, return_counts=True)
         self.apex = values[np.argmax(counts)]  # Lowest point in all frames
-        # self.apex = self.apices[self.ed_frame]  # Lowest point at end diastole
 
     def get_normalized_curvature(self, curvature):
         # Empirically established values. Useful for coloring, where values cannot be negative.
@@ -174,8 +173,8 @@ class Trace:
             upper_bound = len(curv.columns)
         else:
             _t = int(self.view == '4C')
-            lower_bound = int(np.round((_t * 0.04 + (1 - _t) * 0.6) * len(curv.columns)))
-            upper_bound = int(np.round((_t * 0.4 + (1 - _t) * 0.96) * len(curv.columns)))
+            lower_bound = int(np.round((_t * 0.04 + (1 - _t) * 0.7) * len(curv.columns)))
+            upper_bound = int(np.round((_t * 0.3 + (1 - _t) * 0.96) * len(curv.columns)))
             print('lower bound: {}, upper bound: {}'.format(lower_bound, upper_bound))
 
             # id of the column (point number) with minimum value
@@ -424,6 +423,7 @@ class PickleReader:
         self.source_path = source_path
         self.output_path = output_path
         self.model_path = model_path
+        self.s_sopid = None
         # self.lookup_table = self._get_lookup_table()
 
     def _get_lookup_table(self):
@@ -447,42 +447,77 @@ class PickleReader:
 
         return min_x, min_y, max_x, max_y
 
+    def _save_failed_qc_image(self, plot_title, mask):
+        plt.imshow(mask)
+        plt.title(plot_title)
+        case_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
+                                                self.s_sopid.replace('.', '_')))
+        shutil.rmtree('{}/*'.format(case_dir), ignore_errors=True)
+        failed_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
+                                                  self.s_sopid.replace('.', '_'), str(self.cycle_index)))
+        plt.savefig(os.path.join(failed_dir, '{}_{}_{}.png'.format(plot_title, self.cycle_index, self.img_index)))
+        plt.close()
+
     def _check_mask_quality(self, mask):
 
-        values, counts = np.unique(mask, return_counts=True)  # retruned array is sorted
-        # print(values)
-        # print(counts)
+        values, counts = np.unique(mask, return_counts=True)  # returned array is sorted
+
         atrium_bp_ratio = counts[3]/counts[1]
+        if atrium_bp_ratio > 1.5:
+            self._save_failed_qc_image('atrium_bp_raitio_ {}'.format(atrium_bp_ratio), mask)
+            return False
+
         atrium_lv_ratio = counts[3]/(counts[1]+counts[2])
-        # print('atrium_bp_ratio: {}, atrium_lv_ratio: {}'.format(atrium_bp_ratio, atrium_lv_ratio))
+        if atrium_lv_ratio > 0.7:
+            self._save_failed_qc_image('atrium_lv_ratio_ {}'.format(atrium_lv_ratio), mask)
+            return False
+
         min_bpx, min_bpy, max_bpx, max_bpy = self._find_extreme_coordinates(mask, values[1])
         min_myox, min_myoy, max_myox, max_myoy = self._find_extreme_coordinates(mask, values[2])
-        distances = (np.abs(min_bpx - min_myox),
-                     np.abs(min_bpy - min_myoy),
-                     np.abs(max_bpx - max_myox),
-                     np.abs(max_bpy - max_myoy))
-        print('minx: {}, miny: {}, maxx: {}, maxy: {}'.format(*distances))
-        # print('min_bpx: {}, min_bpy: {}, max_bpx: {}, max_bpy: {}'.format(min_bpx, min_bpy, max_bpx, max_bpy))
-        # plt.imshow(mask)
-        # plt.scatter([min_bpx, max_bpx], [min_bpy, max_bpy], c='red')
-        # plt.show()
-        return atrium_bp_ratio
+        min_atx, min_aty, max_atx, max_aty = self._find_extreme_coordinates(mask, values[3])
+
+        distances = (np.abs(min_bpx - min_myox),  # distances[0]
+                     np.abs(min_bpy - min_myoy),  # distances[1]
+                     np.abs(max_bpx - max_myox),  # distances[2]
+                     np.abs(max_bpy - max_myoy))  # distances[3]
+
+        if distances[0] > 35:
+            self._save_failed_qc_image('delta_left_x_ {}'.format(distances[0]), mask)
+            return False
+        if distances[1] > 45:
+            self._save_failed_qc_image('delta_lower_y_ {}'.format(distances[1]), mask)
+            return False
+        if distances[2] > 35:
+            self._save_failed_qc_image('delta_right_x_ {}'.format(distances[2]), mask)
+            return False
+        if distances[3] > 15:
+            self._save_failed_qc_image('delta_higher_y_ {}'.format(distances[3]), mask)
+            return False
+
+        bp_mask = np.where(mask == values[1])
+
+        bp_above_atrium = np.sum(bp_mask[0] > min_aty)/len(bp_mask[0])  # Blood pool above the atrium mask
+        if bp_above_atrium > 0.05:
+            self._save_failed_qc_image('lowest_atrium_pixel_and_ratio {}_{}'.format(
+                min_aty, bp_above_atrium), mask)
+            return False
+
+        return True
 
     def _segmentation_with_model(self, cycle_images):
 
         exec_net, plugin = self._get_exec_net()
 
         cycle_segmentations = []
-        # for i in range(cycle_images.shape[2]):
-        #     img = cycle_images[:, :, i]
-        #     np.savetxt(os.path.join(self.output_path, 'image_'+str(i)+'.csv'), img, fmt='%.e3', delimiter=',')
-        ratios = []
+
+        failed = 0
         for i in range(cycle_images.shape[2]):
+            self.img_index = i
             img = cycle_images[:, :, i]
             img_from_array = Image.fromarray(img.astype('uint8'), 'L').transpose(Image.FLIP_LEFT_RIGHT)
             img = img_from_array.resize((256, 256))
             img_array = np.asarray(img) / 255  # Is it necessary? Scalling can be done in the line above
-            img_array = cv2.pow(img_array, 0.6)
+            img_array = cv2.pow(img_array, 0.8)
             # Plotting  # plt.imshow(img, cmap='gray')
             # plt.show()
             exec_net.start_async(request_id=0, inputs={'input_image': img_array})
@@ -494,24 +529,21 @@ class PickleReader:
                 scaling_factor = int(255 / np.max(mask))
                 image_mask = Image.fromarray(scaling_factor * np.uint8(mask), mode=img.mode)
                 image_mask = image_mask.resize((256, 256))
-                # ratios.append(self._check_mask_quality(np.array(image_mask)))
-
-                # Plotting      # plt.imshow(image_mask)
-                # plt.show()
-                cycle_segmentations.append(image_mask)
-        # plt.plot(ratios)
-        # plt.show()
+                if self._check_mask_quality(np.array(image_mask)):
+                    cycle_segmentations.append(image_mask)
+                else:
+                    failed += 1
 
         del exec_net
         del plugin
 
-        return cycle_segmentations
+        if not failed / cycle_images.shape[2] > 0.35:
+            return cycle_segmentations
+        else:
+            return None
 
     @staticmethod
-    def _find_trace_with_minimum_curvature(df):
-        return df[['min']].idxmin(axis=0)
-
-    def _apply_kalman(self, curvature):
+    def _apply_kalman(curvature):
         tran = np.eye(2 * curvature.shape[1], 2 * curvature.shape[1])
         obs = np.zeros((int(tran.shape[0] / 2), tran.shape[0]))
         init_mean = np.zeros(2 * curvature.shape[1])
@@ -531,11 +563,12 @@ class PickleReader:
         curvature, _ = kf.em(curvature).smooth(curvature)
 
     def _plot_relevant_cycle(self, trace):
-        plot_tool = PlottingCurvature(None, self.output_path, ventricle=trace)
+        traces_folder = check_directory(os.path.join(self.output_path, 'traces'))
+        plot_tool = PlottingCurvature(None, traces_folder, ventricle=trace)
         plot_tool.plot_all_frames(coloring_scheme='curvature')
         plot_tool.plot_heatmap()
 
-    def _from_images_to_indices(self, cycles_list, series_uid):
+    def _from_images_to_indices(self, cycles_list, series_uid, plot_all=False):
         """
         The main function to control the flow and call:
         1. Segmentation, which returns a list of lists (one for each cycle) of masks (one for each image).
@@ -546,82 +579,164 @@ class PickleReader:
         :param series_uid:
         :return:
         """
-        segmentation_list = []
-        for cycle in cycles_list:
-            print('cycle_length: {}'.format(cycle.shape[2]))
-            segmentation_list.append(self._segmentation_with_model(cycle))  # list of segemntations of single cycle
 
-        contours = Contour(segmentations_path=None, output_path=self.output_path,
-                           segmentation_cycle_arrays=segmentation_list)
-        contours.lv_endo_edges()
-        contours_list = contours.all_cycles
-
-        traces_dict = {}
         df_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t'])
 
-        for con_i, contours in enumerate(contours_list):
-            trace = Trace(case_name=series_uid+'_'+str(con_i), contours=contours,
-                          interpolation_parameters=(500, None))
-            df_biomarkers = df_biomarkers.append(trace.biomarkers)
-            traces_dict[series_uid+'_'+str(con_i)] = trace
+        # ----- SEGMENTATION ---------------------------------------------------------------------------------
+        segmentation_list = []
+        for cycle_i, cycle in enumerate(cycles_list):
+            print('cycle_length: {}'.format(cycle.shape[2]))
+            self.cycle_index = cycle_i
+            segmentations = self._segmentation_with_model(cycle)
+            if segmentations is not None:
+                segmentation_list.append(segmentations)  # list of segemntations of single cycles
+            else:
+                print('Cycle failed on segmentation quality check')
+                segmentation_list.append(None)
+                seg_id = '{}_{}'.format(series_uid, cycle_i)
+                df_biomarkers.loc[seg_id] = [0.0]*5
+
+        # ----------------------------------------------------------------------------------------------------
+
+        # ----- CONTOURING -----------------------------------------------------------------------------------
+        contours_list = []
+        for segment_i, segment in enumerate(segmentation_list):
+            self.cycle_index = segment_i
+            if segment is not None:
+                contours = Contour(segmentations_path=None, output_path=self.output_path,
+                                   segmentation_cycle=segment, s_sopid=self.s_sopid, cycle_index=self.cycle_index)
+                contours.lv_endo_edges()
+                if contours.all_cycle is not None and \
+                        len(contours.all_cycle)/cycles_list[self.cycle_index].shape[2] > 0.7:
+                    contours_list.append(contours.all_cycle)  # list of contours of single cycles
+                else:
+                    print('Cycle failed on contouring quality check')
+                    contours_list.append(None)
+                    seg_id = '{}_{}'.format(series_uid, segment_i)
+                    df_biomarkers.loc[seg_id] = [0.0] * 5
+            else:
+                print('Cycle excluded due to previous segmentation failure')
+                contours_list.append(None)
+
+        # ----------------------------------------------------------------------------------------------------
+
+        # ----- CURVATURE ------------------------------------------------------------------------------------
+        traces_dict = {}
+        for contour_i, contour in enumerate(contours_list):
+            if contour is not None:
+                trace_id = series_uid+'_'+str(contour_i)
+                trace = Trace(case_name=trace_id, contours=contour,
+                              interpolation_parameters=(500, None))
+                traces_dict[trace_id] = trace
+                df_biomarkers = df_biomarkers.append(trace.biomarkers)
+        # ----------------------------------------------------------------------------------------------------
+
+        # ----- PLOTTING -------------------------------------------------------------------------------------
+        biomarkers_dir = check_directory(os.path.join(self.output_path, 'biomarkers'))
+        df_biomarkers.to_csv(os.path.join(biomarkers_dir, '{}.csv'.format(series_uid)))
 
         print(df_biomarkers)
-        min_curvature_index = self._find_trace_with_minimum_curvature(df_biomarkers)
+        min_curvature_index = self._find_trace_with_minimum_curvature(df_biomarkers[df_biomarkers])
         self._plot_relevant_cycle(traces_dict[min_curvature_index[0]])
 
-        # Plotting: contour of LV on the image and mask
-        min_curv_cycle = int(min_curvature_index[0].split('_')[-1])
-        img_dir = check_directory(os.path.join(self.output_path, 'Seg_cont', min_curvature_index[0]))
+        # TODO: change indexes and lengths (new ones are no longer valid!)
+        if plot_all:
+            self._plot_all(segmentation_list, cycles_list, contours_list)
+        else:
+            # Plotting: contour of LV on the image and mask
+            min_curv_cycle = int(min_curvature_index[0].split('_')[-1])
+            img_dir = check_directory(os.path.join(self.output_path, 'Seg_cont', min_curvature_index[0]))
+            print('min_curv_cycle: {}'.format(min_curv_cycle))
+            for i in range(len(contours_list[min_curv_cycle])):
+                plt.subplot(121)
+                plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
+                plt.imshow(np.array(segmentation_list[min_curv_cycle][i]), cmap='YlOrBr', alpha=0.2)
+                # plt.show()
+                plt.subplot(122)
+                plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
+                plt.plot([x[0] for x in contours_list[min_curv_cycle][i]],
+                         [-y[1] for y in contours_list[min_curv_cycle][i]], 'r')
+                plt.savefig(os.path.join(img_dir, 'Seg_cont_{}'.format(i)))
+                plt.clf()
+        # ----------------------------------------------------------------------------------------------------
 
-        for i in range(len(segmentation_list[min_curv_cycle])):
-            plt.subplot(121)
-            plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
-            plt.imshow(np.array(segmentation_list[min_curv_cycle][i]), cmap='YlOrBr', alpha=0.2)
-            # plt.show()
-            plt.subplot(122)
-            plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
-            plt.plot([x[0] for x in contours_list[min_curv_cycle][i]],
-                     [-y[1] for y in contours_list[min_curv_cycle][i]], 'r')
-            plt.savefig(os.path.join(img_dir, 'Seg_cont_{}'.format(i)))
-            plt.clf()
-
+        print(df_biomarkers)
         return df_biomarkers
+
+    @staticmethod
+    def _find_trace_with_minimum_curvature(df):
+        return df[['min']].idxmin(axis=0)
+
+    def _plot_all(self, seg_list, cyc_list, cont_list):
+        for j in range(len(seg_list)):
+            for i in range(len(seg_list[j])):
+                plt.subplot(121)
+                plt.imshow(np.flip(np.array(cyc_list[j][:, :, i]), axis=1), cmap='gray')
+                plt.imshow(np.array(seg_list[j][i]), cmap='YlOrBr', alpha=0.4)
+                # plt.show()
+                plt.subplot(122)
+                plt.imshow(np.flip(np.array(cyc_list[j][:, :, i]), axis=1), cmap='gray')
+                plt.plot([x[0] for x in cont_list[j][i]],
+                         [-y[1] for y in cont_list[j][i]], 'r')
+                plt.savefig(os.path.join(self.output_path, 'Seg_cont', 'Seg_cont_{}_{}'.format(j, i)))
+                plt.clf()
+        plt.close()
+
+    def _print_error_file(self, cause):
+        error_file_dir = check_directory(os.path.join(self.output_path, self.s_sopid))
+        txt_file = open(os.path.join(error_file_dir, cause[0]), 'w')
+        txt_file.write('At least one of the relevant fields in the pickle {} is missing: {}'.format(cause[0], cause[1]))
+        txt_file.close()
+
+    def _check_pickle_integrity(self, item, filename):
+        item_fields = ['RDCM_viewlabel', 'time_vector', 'scanconv_movie', 'ecg_trigs']
+        for field in item_fields:
+            if item[field] is None:
+                self._print_error_file((filename, field))
+                return False
+        return True
 
     def read_images_and_get_indices(self):
         pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
+        pickles = [os.path.join(self.source_path, 'CurveData_DATA_CM193022.pck')]
 
         list_all_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t'])
         for f, filename in enumerate(pickles):  # list of the pickle files in the folder
-            if f == 2:
-                data = pickle.load(open(filename, 'rb'))
-                print(filename)
-                for s_sopid in data.keys():  # list of Series SOP instance UIDs in a pickle file
-                    print(s_sopid)
-                    cycle_movies = []
-                    for i, item in enumerate(data[s_sopid]):  # items of Series SOP instance UID entry
+
+            data = pickle.load(open(filename, 'rb'))
+            print(filename)
+            for s_sopid in data.keys():  # list of Series SOP instance UIDs in a pickle file
+                print(s_sopid)
+                self.s_sopid = s_sopid
+                cycle_movies = []
+                for i, item in enumerate(data[s_sopid]):  # items of Series SOP instance UID entry
+                    if self._check_pickle_integrity(item, filename):
                         if item['RDCM_viewlabel'] == '4CH' and \
                                 len(item['time_vector']) > 1 and \
-                                item['scanconv_movie'].shape[2] > 1 \
-                                and i < 6:
-                            # Some of the movies were single frame or no time vector stored
+                                item['scanconv_movie'].shape[2] > 1:
+                                # and i < 6:
+
                             scanconv_movie = item['scanconv_movie']
                             last_cycle_triggs = item['ecg_trigs'][-2:]
-                            last_cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector'])) for trig_time in last_cycle_triggs]
-                            cycle_movies.append(scanconv_movie[:, :, last_cycle_frames[0]:last_cycle_frames[1]+1])
+                            last_cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector']))
+                                                 for trig_time in last_cycle_triggs]
+                            cycle_movies.append(scanconv_movie[:, :,
+                                                last_cycle_frames[0]:last_cycle_frames[1]+1])
                             print(i)
                             print('len time vector: {}'.format(len(item['time_vector'])))
-                            print('number of frames in a movie: {}'.format(scanconv_movie.shape))
+                            print('number of frames in a movie: {}'.format(scanconv_movie.shape[2]))
                             print('ECG_TRIGS: {}'.format(item['ecg_trigs']))
                             print('last cycle trigs: {}'.format(last_cycle_triggs))
                             # Plotting              # plt.imshow(scanconv_movie[:, :, 0], cmap='gray')
                             # plt.show()
 
-                    print('cycle_movies: {}'.format(len(cycle_movies)))
-                    list_all_biomarkers = list_all_biomarkers.append(self._from_images_to_indices(cycle_movies, s_sopid))
+                print('cycle_movies: {}'.format(len(cycle_movies)))
+                list_all_biomarkers = list_all_biomarkers.append(
+                    self._from_images_to_indices(cycle_movies, s_sopid, plot_all=False))
 
                 # TODO: Figure out what is actually being returned/saved
-            if f == 2:
-                return list_all_biomarkers
+            # if f == 2:
+        return list_all_biomarkers
 
     def extract_curvature_indices(self):
         list_of_biomarkers = self.read_images_and_get_indices()

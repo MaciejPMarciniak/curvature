@@ -6,20 +6,30 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.signal import savgol_filter
 import cv2
+import shutil
+
+
+def check_directory(directory):
+    if not os.path.isdir(directory):
+        os.mkdir(directory)
+    return directory
 
 
 class Contour:
 
-    def __init__(self, segmentations_path, output_path, segmentation_cycle_arrays):
+    def __init__(self, segmentations_path, output_path, segmentation_cycle, s_sopid, cycle_index):
         self.segmentations_path = segmentations_path
         self.output_path = self._check_directory(output_path)
-        self.segmentation_cycle_arrays = segmentation_cycle_arrays
+        self.segmentation_cycle = segmentation_cycle
+        self.s_sopid = s_sopid
+        self.cycle_index = cycle_index
+        self.img_index = 0
         if self.segmentations_path is not None:
             self.seg_files = glob.glob(os.path.join(self.segmentations_path, '*.png'))
             self.seg_files.sort()
         self.current_gray_mask = None
         self.sorted_edge = list()
-        self.all_cycles = None
+        self.all_cycle = None
 
     @staticmethod
     def _check_directory(directory):
@@ -99,12 +109,10 @@ class Contour:
             window_len: the dimension of the smoothing window; should be an odd integer
             window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
                 flat window will produce a moving average smoothing.
-
         output:
             the smoothed signal
 
         example:
-
         t=linspace(-2,2,0.1)
         x=sin(t)+randn(len(t))*0.1
         y=smooth(x)
@@ -232,6 +240,62 @@ class Contour:
 
         return coord_lv_ordered
 
+    def _check_contour_quality(self, prev_cont, mask):
+
+        percent_prev_contour_diff = np.abs(len(self.sorted_edge) - len(prev_cont)) / len(prev_cont)
+        if percent_prev_contour_diff > 0.2:  # 20% of previous contour
+            self._save_failed_qc_image('percent_prev_cont {}'.format(percent_prev_contour_diff), mask)
+            return False
+
+        values, counts = np.unique(mask, return_counts=True)  # returned array is sorted
+
+        positions = np.where(mask == values[1])
+        max_bp_y, max_bp_x = [np.max(p) for p in positions]
+        min_bp_y, min_bp_x = [np.min(p) for p in positions]
+        max_cont_y = np.max([-c[1] for c in self.sorted_edge])
+        min_cont_y = np.min([-c[1] for c in self.sorted_edge])
+        max_cont_x = np.max([c[0] for c in self.sorted_edge])
+        min_cont_x = np.min([c[0] for c in self.sorted_edge])
+
+        if max_bp_y < max_cont_y:
+            self._save_failed_qc_image('Contour over bp', mask)
+            return False
+
+        diff_max_y = np.abs(max_bp_y - max_cont_y)
+        if diff_max_y > 10:
+            self._save_failed_qc_image('Diff_max_bp_y_max_cont_y {}'.format(diff_max_y), mask)
+            return False
+
+        diff_min_y = np.abs(min_bp_y - min_cont_y)
+        if diff_min_y > 15:
+            self._save_failed_qc_image('Diff_min_bp_y_min_cont_y {}'.format(diff_min_y), mask)
+            return False
+
+        diff_max_x = np.abs(max_bp_x - max_cont_x)
+        if diff_max_x > 15:
+            self._save_failed_qc_image('Diff_max_bp_x_max_cont_x {}'.format(diff_max_x), mask)
+            return False
+
+        diff_min_x = np.abs(min_bp_x - min_cont_x)
+        if diff_min_x > 15:
+            self._save_failed_qc_image('Diff_min_bp_x_min_cont_x {}'.format(diff_min_x), mask)
+            return False
+
+        return True
+
+    def _save_failed_qc_image(self, plot_title, mask):
+        plt.imshow(mask)
+        plt.plot([x[0] for x in self.sorted_edge], [-y[1] for y in self.sorted_edge], 'r')
+        plt.title(plot_title)
+        case_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
+                                                self.s_sopid.replace('.', '_')))
+        shutil.rmtree('{}/*'.format(case_dir), ignore_errors=True)
+        failed_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
+                                                  self.s_sopid.replace('.', '_'), str(self.cycle_index)))
+        plt.savefig(os.path.join(failed_dir, '{}_{}_{}.png'.format(plot_title, self.cycle_index,
+                                                                   self.img_index)))
+        plt.close()
+
     def lv_endo_edges(self):
 
         if self.segmentations_path is not None:
@@ -241,20 +305,28 @@ class Contour:
                 endo_coords = self._lv_endo_edges(seg_mask)
                 self._save_results(endo_coords, basename(seg_file)[:-4])
 
-        elif self.segmentation_cycle_arrays is not None:
-            all_cycles_coords = []
-            for cycle in self.segmentation_cycle_arrays:
-                print('length of the cycle: {}'.format(len(cycle)))
+        elif self.segmentation_cycle is not None:
 
-                cycle_coords = []
-                for seg_img in cycle:
-                    endo_coords = self._lv_endo_edges(seg_img)
-                    print('len of edge: {}'.format(len(self.sorted_edge)))
+            print('length of the cycle: {}'.format(len(self.segmentation_cycle)))
+            cycle_coords = []
+            self._lv_endo_edges(self.segmentation_cycle[0])
+            prev_cont = self.sorted_edge
+
+            failed = 0
+            for seg_img_i, seg_img in enumerate(self.segmentation_cycle):
+                endo_coords = self._lv_endo_edges(seg_img)
+                self.img_index = seg_img_i
+                # print('len of edge: {}'.format(len(self.sorted_edge)))
+                if self._check_contour_quality(prev_cont, np.array(seg_img)):
                     cycle_coords.append(endo_coords[::3])
-                print(len(cycle_coords))
-                all_cycles_coords.append(cycle_coords)
+                    prev_cont = self.sorted_edge
+                else:
+                    failed += 1
 
-            self.all_cycles = all_cycles_coords
+            if not failed / len(self.segmentation_cycle) > 0.35:
+                self.all_cycle = cycle_coords
+            else:
+                self.all_cycle = None
 
 
 if __name__ == '__main__':
