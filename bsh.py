@@ -423,6 +423,7 @@ class PickleReader:
         self.source_path = source_path
         self.output_path = output_path
         self.model_path = model_path
+        self.filename = None
         self.s_sopid = None
         # self.lookup_table = self._get_lookup_table()
 
@@ -639,7 +640,7 @@ class PickleReader:
             self._print_error_file_cycles()
             return df_biomarkers
 
-        min_curvature_index = self._find_trace_with_minimum_curvature(df_biomarkers[df_biomarkers])
+        min_curvature_index = self._find_trace_with_minimum_curvature(df_biomarkers)
         self._plot_relevant_cycle(traces_dict[min_curvature_index[0]])
 
         # TODO: change indexes and lengths (new ones are no longer valid!)
@@ -686,19 +687,34 @@ class PickleReader:
         plt.close()
 
     def _print_error_file_pickle(self, cause):
-        print('Pickle integrity corrupted')
-        error_file_dir = check_directory(os.path.join(self.output_path, 'failed_qc', self.s_sopid))
-        txt_file = open(os.path.join(error_file_dir, '{}.txt'.format(cause[0])), 'w+')
-        txt_file.write('At least one of the relevant fields in the pickle {} is missing: {}'.format(cause[0], cause[1]))
+        print('Pickle fields missing')
+        error_filename = cause[0].split('.')[0]
+        error_file_dir = check_directory(os.path.join(self.output_path, 'failed_qc', error_filename))
+        error_file = os.path.join(error_file_dir, '{}.txt'.format(error_filename))
+        txt_file = open(error_file, 'w+')
+        txt_file.write('At least one of the relevant fields in the pickle {} is missing: {}'.format(cause[0],
+                                                                                                    cause[1]))
         txt_file.close()
 
     def _print_error_file_cycles(self):
-            print('No usable cycles found')
-            error_file_dir = check_directory(os.path.join(self.output_path, 'failed_qc', self.s_sopid))
-            txt_file = open(os.path.join(error_file_dir, '{}.txt'.format(self.s_sopid)), 'w+')
-            txt_file.write(
-                'No usable cycles found in case {}'.format(self.s_sopid))
-            txt_file.close()
+        print('No usable cycles found')
+        error_filename = self.filename.split('.')[0]
+        error_file_dir = check_directory(os.path.join(self.output_path, 'failed_qc', 'failed_cycles'))
+        txt_file = open(os.path.join(error_file_dir, '{}.txt'.format(self.s_sopid)), 'w')
+        txt_file.write('No usable cycles found in case {}'.format(self.s_sopid))
+        txt_file.close()
+        txt_file2 = open(os.path.join(error_file_dir, '{}.txt'.format(error_filename)), 'w')
+        txt_file2.write('No usable cycles found in case {}'.format(error_filename))
+        txt_file2.close()
+
+    def _print_error_file_corrupted(self):
+        print('Pickle file corrupted')
+        filename = self.filename.split('.')[0]
+        error_file_dir = check_directory(os.path.join(self.output_path, 'failed_qc', filename))
+        error_file = os.path.join(error_file_dir, '{}.txt'.format(filename))
+        txt_file = open(error_file, 'w')
+        txt_file.write('File {} is corrupted'.format(filename))
+        txt_file.close()
 
     def _check_pickle_integrity(self, item, filename):
         item_fields = ['RDCM_viewlabel', 'time_vector', 'scanconv_movie', 'ecg_trigs']
@@ -710,12 +726,18 @@ class PickleReader:
 
     def read_images_and_get_indices(self):
         pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
-        # pickles = [os.path.join(self.source_path, 'CurveData_DATA_CM193022.pck')]
+        pickles.sort()
+        # pickles = [os.path.join(self.source_path, 'CurveData_DATA_CA161407.pck')]
 
         list_all_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t'])
         for f, filename in enumerate(pickles):  # list of the pickle files in the folder
+            self.filename = filename
+            try:
+                data = pickle.load(open(filename, 'rb'))
+            except pickle.UnpicklingError:
+                self._print_error_file_corrupted()
+                continue
 
-            data = pickle.load(open(filename, 'rb'))
             print(filename)
             for s_sopid in data.keys():  # list of Series SOP instance UIDs in a pickle file
                 print(s_sopid)
@@ -726,7 +748,7 @@ class PickleReader:
                         if item['RDCM_viewlabel'] == '4CH' and \
                                 len(item['time_vector']) > 1 and \
                                 item['scanconv_movie'].shape[2] > 1:
-                                # and i < 6:
+                            # and i < 6:
 
                             scanconv_movie = item['scanconv_movie']
                             last_cycle_triggs = item['ecg_trigs'][-2:]
@@ -743,11 +765,13 @@ class PickleReader:
                             # plt.show()
 
                 print('cycle_movies: {}'.format(len(cycle_movies)))
-                list_all_biomarkers = list_all_biomarkers.append(
-                    self._from_images_to_indices(cycle_movies, s_sopid, plot_all=False))
-
-                # TODO: Figure out what is actually being returned/saved
-            # if f == 2:
+                if len(cycle_movies) > 0:
+                    list_all_biomarkers = list_all_biomarkers.append(
+                        self._from_images_to_indices(cycle_movies, s_sopid, plot_all=False))
+                else:
+                    self._print_error_file_corrupted()
+            # TODO: Figure out what is actually being returned/saved
+        # if f == 2:
         return list_all_biomarkers
 
     def extract_curvature_indices(self):
