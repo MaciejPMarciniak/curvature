@@ -8,6 +8,7 @@ import cv2
 import shutil
 from itertools import combinations
 from scipy.interpolate import interp1d, Rbf
+from scipy.signal import savgol_filter
 from pykalman import KalmanFilter
 from openvino.inference_engine import IENetwork, IEPlugin
 from PIL import Image
@@ -45,7 +46,7 @@ class Trace:
         else:
             self.data = self._read_echopac_output()
         self._interpolate_traces(trace_points_n=interpolation_parameters[0],
-                                 time_steps_n=interpolation_parameters[1])
+                                 temporal_smoothing=interpolation_parameters[1])
         self.get_curvature_per_frame()
         print('CURVATURE_CALCULATED')
         self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)
@@ -62,7 +63,8 @@ class Trace:
                     f.close()
                     break
 
-        data = pd.read_csv(filepath_or_buffer=self.case_name, sep=',', skiprows=10, header=None, delim_whitespace=False)
+        data = pd.read_csv(filepath_or_buffer=self.case_name, sep=',', skiprows=10, header=None,
+                           delim_whitespace=False)
         data.dropna(axis=1, inplace=True)
         data = data.values
         self.number_of_frames, self.number_of_points = data.shape[0], int(data.shape[1]/2)
@@ -70,7 +72,7 @@ class Trace:
 
     @staticmethod
     def _plane_area(x, y):
-        # TODO: replace with an alborithm which takes into account the fact that some LVs are not convex
+        # TODO: replace with an algorithm which takes into account the fact that some LVs are not convex
         return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
     def _find_ed_and_es_frame(self):
@@ -80,61 +82,35 @@ class Trace:
             areas[frame] = self._plane_area(x, y)
         self.es_frame, self.ed_frame = np.argmin(areas), np.argmax(areas)
 
-    def _interpolate_traces(self, trace_points_n=None, time_steps_n=None):
+    def _interpolate_traces(self, trace_points_n=None, temporal_smoothing=False):
 
         # TODO: make a similar function that reads 2Dstrain exports (np array instead of list of tuple, the
         # TODO: same number of points in each frame
 
         if trace_points_n is None:
             point_interpolated = self.data
-
         else:
-            print('len data: {}'.format(len(self.data)))
             x_time_steps = np.arange(len(self.data))
             point_interpolated = np.zeros((len(self.data), trace_points_n*2))
 
             for trace in x_time_steps:
                 positions = np.arange(len(self.data[trace]))
                 points_target = np.linspace(0, len(self.data[trace]) - 1, trace_points_n)
-                # Cubic interpolation:
-                # ci_x = interp1d(x=positions, y=self.data[trace, ::2], kind=7)
-                # ci_y = interp1d(x=positions, y=self.data[trace, 1::2], kind=7)
-                #
-                # point_interpolated[trace, ::2] = ci_x(points_target)
-                # point_interpolated[trace, 1::2] = ci_y(points_target)
-                # -----
-                # Spline interpolation (varying smoothness, depnedant on the number of points in original trace
-                # (parameter s).
-                # points_target = np.linspace(0, 1, trace_points_n)
-                # tck, u = splprep([self.data[trace, ::2], self.data[trace, 1::2]])
-                # interpolation = splev(points_target, tck)
-                # point_interpolated[trace, ::2] = interpolation[0]
-                # point_interpolated[trace, 1::2] = interpolation[1]
-                # -----
+
                 # Radial basis function interpolation
                 # 'quintic': r**5 where r is the distance from the next point
                 # smoothing should be adjusted to the number of original points, but there is no clear
                 # criterion
-                rbf_x = Rbf(positions, [x[0] for x in self.data[trace]], smooth=40, function='quintic')
-                rbf_y = Rbf(positions, [y[1] for y in self.data[trace]], smooth=40, function='quintic')
+                rbf_x = Rbf(positions, [x[0] for x in self.data[trace]], smooth=20, function='quintic')
+                rbf_y = Rbf(positions, [y[1] for y in self.data[trace]], smooth=20, function='quintic')
 
                 point_interpolated[trace, ::2] = rbf_x(points_target)
                 point_interpolated[trace, 1::2] = rbf_y(points_target)
 
-            point_interpolated_array = np.array(point_interpolated)
-
-            if time_steps_n is not None:
-                time_steps_target = np.linspace(0, self.data.shape[0] - 1, time_steps_n)
-                time_and_point_interpolated = np.zeros((time_steps_n, trace_points_n*2))
-
-                for point in range(trace_points_n*2):
-                    ci = interp1d(x=x_time_steps, y=point_interpolated[:, point], kind='cubic')
-                    time_interp = ci(time_steps_target)
-                    time_and_point_interpolated[:, point] = time_interp
-
-                point_interpolated = time_and_point_interpolated
-
-        print('Original resolution: {}, new resolution: {}'.format(len(self.data), point_interpolated_array.shape))
+        if temporal_smoothing:
+            for point in range(point_interpolated.shape[1]):
+                point_interpolated[:, point] = savgol_filter(point_interpolated[:, point], 9, polyorder=5,
+                                                             mode='interp')
 
         self.number_of_frames, self.number_of_points = point_interpolated.shape
         self.data = point_interpolated
@@ -153,7 +129,7 @@ class Trace:
 
     def find_apices(self):
         for frame in range(self.number_of_frames):
-            # self.apices.append(np.argmax(self.ventricle_curvature[frame]))  # Maximum curvature in given frame
+            # self.apices.append(np.argmax(self.ventricle_curvature[frame]))  # Maximum curvature in a frame
             self.apices.append(np.argmax(self.data[frame, 1::2]))  # Lowest point in given frame
         values, counts = np.unique(self.apices, return_counts=True)
         self.apex = values[np.argmax(counts)]  # Lowest point in all frames
@@ -175,7 +151,6 @@ class Trace:
             _t = int(self.view == '4C')
             lower_bound = int(np.round((_t * 0.04 + (1 - _t) * 0.7) * len(curv.columns)))
             upper_bound = int(np.round((_t * 0.3 + (1 - _t) * 0.96) * len(curv.columns)))
-            print('lower bound: {}, upper bound: {}'.format(lower_bound, upper_bound))
 
             # id of the column (point number) with minimum value
             curv_min_col = curv.loc[:, lower_bound:upper_bound].min(axis=0).idxmin()
@@ -390,7 +365,7 @@ class Cohort:
             _output_path = self._check_directory(os.path.join(self.output_path, self.view, 'output_curvature'))
 
         for case in self.files:
-            ven = Trace(case_name=case, view=self.view, interpolation_parameters=(500, None))
+            ven = Trace(case_name=case, view=self.view, interpolation_parameters=(500, False), contours=None)
             print(ven.case_filename)
             print('Points: {}'.format(ven.number_of_points))
             plot_tool = PlottingCurvature(source=_source_path,
@@ -400,7 +375,8 @@ class Cohort:
                 plot_tool.plot_mean_curvature()
             else:
                 plot_tool.plot_all_frames(coloring_scheme=coloring_scheme)
-                # ven = Trace(case_name=case, view=self.view, interpolation_parameters=(500, 500))
+                # ven = Trace(case_name=case, view=self.view, interpolation_parameters=(500, 500),
+                # contours=None)
                 # plot_tool = PlottingCurvature(source=_source_path,
                 #                               output_path=_output_path,
                 #                               ventricle=ven)
@@ -627,7 +603,7 @@ class PickleReader:
             if contour is not None:
                 trace_id = series_uid+'_'+str(contour_i)
                 trace = Trace(case_name=trace_id, contours=contour,
-                              interpolation_parameters=(500, None))
+                              interpolation_parameters=(500, True))
                 traces_dict[trace_id] = trace
                 df_biomarkers = df_biomarkers.append(trace.biomarkers)
         # ----------------------------------------------------------------------------------------------------
