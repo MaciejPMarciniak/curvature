@@ -139,8 +139,8 @@ class PlottingCurvature:
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
 
         ax0.set_title('LV trace, full cycle'.format(self.id))
-        ax0.set_ylim(-150, 20)
-        ax0.set_xlim(-60, 60)
+        ax0.set_ylim(-130, 20)
+        ax0.set_xlim(-50, 50)
         ax0.set_xlabel('Short axis $[mm]$')
         ax0.set_ylabel('Long axis $[mm]$')
 
@@ -149,7 +149,7 @@ class PlottingCurvature:
         # ax1.axhline(y=-0.040, c='k', ls='-.', lw=1)
         ax1.axvline(x=20, c='k', ls='-.', lw=1)
         ax1.axvline(x=150, c='k', ls='-.', lw=1)
-        ax1.set_ylim(-0.10, 0.25)
+        ax1.set_ylim(-0.15, 0.30)
 
         # ax1.vlines(self.ed_apex_id+1, 0, max(self.curvature[:, self.ed_apex_id]), color='k', linestyles='-.', lw=1)
         #  Added 1 to ed_apex_id because the plot is moved by one (due to lack of curvature at end points)
@@ -246,6 +246,8 @@ class PlottingCurvature:
                    rotation='horizontal')
         plt.xticks([int(self.curvature.shape[0] / 2)], ['Time'], rotation='horizontal')
         plt.tick_params(axis=u'both', which=u'both', length=0)
+        plt.axhline(y=20,  c='k', ls='-.', lw=1)
+        plt.axhline(y=149, c='k', ls='-.', lw=1)
         plt.tight_layout()
         plt.savefig(fname=os.path.join(self.output_path, 'Heatmap of {}'.format(self.id)))
         plt.close()

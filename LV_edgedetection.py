@@ -243,7 +243,7 @@ class Contour:
     def _check_contour_quality(self, prev_cont, mask):
 
         percent_prev_contour_diff = np.abs(len(self.sorted_edge) - len(prev_cont)) / len(prev_cont)
-        if percent_prev_contour_diff > 0.2:  # 20% of previous contour
+        if percent_prev_contour_diff > 0.25:  # 25% of previous contour
             self._save_failed_qc_image('percent_prev_cont {}'.format(percent_prev_contour_diff), mask)
             return False
 
@@ -257,7 +257,7 @@ class Contour:
         max_cont_x = np.max([c[0] for c in self.sorted_edge])
         min_cont_x = np.min([c[0] for c in self.sorted_edge])
 
-        if max_bp_y < max_cont_y:
+        if max_bp_y < max_cont_y - 0.6:
             self._save_failed_qc_image('Contour over bp', mask)
             return False
 
@@ -292,8 +292,8 @@ class Contour:
         shutil.rmtree('{}/*'.format(case_dir), ignore_errors=True)
         failed_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
                                                   self.s_sopid.replace('.', '_'), str(self.cycle_index)))
-        plt.savefig(os.path.join(failed_dir, '{}_{}_{}.png'.format(plot_title, self.cycle_index,
-                                                                   self.img_index)))
+        plt.savefig(os.path.join(failed_dir, '{}_{}_{}.png'.format(self.img_index, plot_title,
+                                                                   self.cycle_index)))
         plt.close()
 
     def lv_endo_edges(self):
