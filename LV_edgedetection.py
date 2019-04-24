@@ -102,7 +102,7 @@ class Contour:
         This method is based on the convolution of a scaled window with the signal.
         The signal is prepared by introducing reflected copies of the signal
         (with the window size) in both ends so that transient parts are minimized
-        in the begining and end part of the output signal.
+        in the beginning and end part of the output signal.
 
         input:
             x: the input signal
@@ -120,18 +120,13 @@ class Contour:
 
         if x.ndim != 1:
             exit("smooth only accepts 1 dimension arrays.")
-
         if x.size < window_len:
             exit("Input vector needs to be bigger than window size.")
-
         if window_len < 3:
             return x
-
         if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
             exit("Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
-
         s = np.r_[x[window_len - 1:0:-1], x, x[-2:-window_len - 1:-1]]
-        # print(len(s))
 
         if window == 'flat':  # moving average
             w = np.ones(window_len, 'd')
@@ -168,10 +163,7 @@ class Contour:
                     break
                 self.sorted_edge.reverse()
                 cur_point = self.sorted_edge[-1]
-                # try:
                 prev_point = self.sorted_edge[-2]
-                # except IndexError:
-                #     prev_point = self.sorted_edge[-1]
             else:
                 prev_point = cur_point
                 cur_point = new_point
@@ -228,8 +220,6 @@ class Contour:
             seg_mask_gray = cv2.cvtColor(np.array(seg_mask), cv2.COLOR_BGR2GRAY)
         else:
             seg_mask_gray = np.array(seg_mask)
-        # Plotting # plt.imshow(seg_mask)
-        # plt.show()
         self.current_gray_mask = seg_mask_gray
         current_lv_edge = self._extract_edge_image()
         coord_lv = self._pair_coordinates(current_lv_edge)
@@ -316,7 +306,6 @@ class Contour:
             for seg_img_i, seg_img in enumerate(self.segmentation_cycle):
                 endo_coords = self._lv_endo_edges(seg_img)
                 self.img_index = seg_img_i
-                # print('len of edge: {}'.format(len(self.sorted_edge)))
                 if self._check_contour_quality(prev_cont, np.array(seg_img)):
                     cycle_coords.append(endo_coords[::3])
                     prev_cont = self.sorted_edge

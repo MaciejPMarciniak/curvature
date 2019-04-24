@@ -402,8 +402,8 @@ class PickleReader:
         self.model_path = model_path
         self.filename = None
         self.s_sopid = None
-        self.width_cm_scale = 1.0
-        self.height_cm_scale = 1.0
+        self.width_mm_scale = 1.0
+        self.height_mm_scale = 1.0
         # self.lookup_table = self._get_lookup_table()
 
     def _get_lookup_table(self):
@@ -468,7 +468,7 @@ class PickleReader:
         if distances[0] > 35:
             self._save_failed_qc_image('delta_left_x_ {}'.format(distances[0]), mask)
             return False
-        if distances[1] > 45:
+        if distances[1] > 35:
             self._save_failed_qc_image('delta_lower_y_ {}'.format(distances[1]), mask)
             return False
         if distances[2] > 35:
@@ -601,14 +601,14 @@ class PickleReader:
                 if contours.all_cycle is not None and \
                         len(contours.all_cycle)/cycles_list[self.cycle_index].shape[2] > 0.7:
                     for c, cont in enumerate(contours.all_cycle):  # Rescaling to metric units (millimeters)
-                        cont = [(x[0] * self.width_cm_scale, x[1] * self.height_cm_scale) for x in cont]
+                        cont = [(x[0] * self.width_mm_scale, x[1] * self.height_mm_scale) for x in cont]
                         contours.all_cycle[c] = cont
                     contours_list.append(contours.all_cycle)  # list of contours of single cycles
                 else:
                     print('Cycle failed on contouring quality check')
                     contours_list.append(None)
                     seg_id = '{}_{}'.format(series_uid, segment_i)
-                    df_biomarkers.loc[seg_id] = [0.0] * 5
+                    df_biomarkers.loc[seg_id] = [1.0] * 5
             else:
                 print('Cycle excluded due to previous segmentation failure')
                 contours_list.append(None)
@@ -650,8 +650,8 @@ class PickleReader:
                 plt.imshow(np.array(segmentation_list[min_curv_cycle][i]), cmap='YlOrBr', alpha=0.2)
                 plt.subplot(122)
                 plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
-                plt.plot([x[0]/self.width_cm_scale for x in contours_list[min_curv_cycle][i]],
-                         [-y[1]/self.height_cm_scale for y in contours_list[min_curv_cycle][i]], 'g--')
+                plt.plot([x[0]/self.width_mm_scale for x in contours_list[min_curv_cycle][i]],
+                         [-y[1]/self.height_mm_scale for y in contours_list[min_curv_cycle][i]], 'g--')
                 plt.savefig(os.path.join(img_dir, 'Seg_cont_{}'.format(i)))
                 plt.clf()
         # ----------------------------------------------------------------------------------------------------
@@ -685,10 +685,10 @@ class PickleReader:
         # print(start_angle, stop_angle, start_depth, stop_depth)
         # print(xmin, xmax, ymin, ymax)
 
-        height_cm_scaler = (ymax - ymin) * 1000 / resolution
-        width_cm_scaler = (xmax - xmin) * 1000 / resolution
+        height_scaler = (ymax - ymin) * 1000 / resolution
+        width_scaler = (xmax - xmin) * 1000 / resolution
 
-        return height_cm_scaler, width_cm_scaler
+        return height_scaler, width_scaler
 
     def _plot_all(self, seg_list, cyc_list, cont_list):
         for j in range(len(seg_list)):
@@ -788,8 +788,9 @@ class PickleReader:
                         image_parameters = [item['params']['vector_angles'][0],
                                             item['params']['vector_angles'][-1],
                                             item['params']['depth_start'], item['params']['depth_end']]
-                        self.height_cm_scale, self.width_cm_scale = \
+                        self.height_mm_scale, self.width_mm_scale = \
                             self._get_width_and_height_scales(*image_parameters)
+
                         # Entire acquisition of the image
                         scanconv_movie = item['scanconv_movie']
 
@@ -806,8 +807,6 @@ class PickleReader:
                         print('number of frames in a movie: {}'.format(scanconv_movie.shape[2]))
                         print('ECG_TRIGS: {}'.format(item['ecg_trigs']))
                         print('cycle_frames: {}'.format(cycle_frames))
-                        # Plotting              # plt.imshow(scanconv_movie[:, :, 0], cmap='gray')
-                        # plt.show()
 
                 print('cycle_movies: {}'.format(len(cycle_movies)))
 
@@ -822,6 +821,7 @@ class PickleReader:
 
     def extract_curvature_indices(self):
         list_of_biomarkers = self.read_images_and_get_indices()
+        list_of_biomarkers.index.name = 'cycle_id'
         list_of_biomarkers.to_csv(os.path.join(self.output_path, 'all_biomarkers.csv'))
         print(list_of_biomarkers)
         print(len(list_of_biomarkers))
