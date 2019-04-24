@@ -159,8 +159,8 @@ class Contour:
                 plt.scatter(self.sorted_edge, s=1)
                 plt.xlim((0, 256))
                 plt.ylim((-256, 0))
-                plt.show()
-                exit()
+                self._save_failed_qc_image('Search for new point failed')
+
 
             if flag:
                 edge_points.append(cur_point)
@@ -168,7 +168,10 @@ class Contour:
                     break
                 self.sorted_edge.reverse()
                 cur_point = self.sorted_edge[-1]
+                # try:
                 prev_point = self.sorted_edge[-2]
+                # except IndexError:
+                #     prev_point = self.sorted_edge[-1]
             else:
                 prev_point = cur_point
                 cur_point = new_point
@@ -232,11 +235,7 @@ class Contour:
         coord_lv = self._pair_coordinates(current_lv_edge)
         coord_lv_ordered = self._walk_on_edge(coord_lv)
         if len(coord_lv_ordered) < 100:
-            plt.subplot(121)
-            plt.imshow(seg_mask)
-            plt.subplot(122)
-            plt.imshow(current_lv_edge)
-            plt.show()
+            self._save_failed_qc_image('Not enough edge points!', seg_mask_gray)
 
         return coord_lv_ordered
 
@@ -283,8 +282,9 @@ class Contour:
 
         return True
 
-    def _save_failed_qc_image(self, plot_title, mask):
-        plt.imshow(mask)
+    def _save_failed_qc_image(self, plot_title, mask=None):
+        if mask is not None:
+            plt.imshow(mask)
         plt.plot([x[0] for x in self.sorted_edge], [-y[1] for y in self.sorted_edge], 'r')
         plt.title(plot_title)
         case_dir = check_directory(os.path.join(self.output_path, 'failed_qc',

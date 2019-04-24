@@ -349,3 +349,20 @@ class PlottingDistributions:
         if show:
             plt.show()
         self._save_plot(series1 + '_vs_' + series2 + '_labeled.png', lm)
+
+
+def plot_radial():
+    # Using linspace so that the endpoint of 360 is included
+    actual = np.radians(np.linspace(0, 360, 30))
+    expected = np.arange(0, 4, 1)
+
+    r, theta = np.meshgrid(expected, actual)
+    values = np.random.random((actual.size, expected.size))
+
+    fig, ax = plt.subplots(subplot_kw=dict(projection='polar'))
+    ax.contourf(theta, r, values)
+
+    plt.show()
+
+if __name__ == '__main__':
+    plot_radial()

@@ -485,6 +485,10 @@ class PickleReader:
             self._save_failed_qc_image('lowest_atrium_pixel_and_ratio {}'.format(bp_above_atrium), mask)
             return False
 
+        if min_bpy < 5:
+            self._save_failed_qc_image('blood pool at the edge of image', mask)
+            return False
+
         return True
 
     def _segmentation_with_model(self, cycle_images):
@@ -647,7 +651,7 @@ class PickleReader:
                 plt.subplot(122)
                 plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
                 plt.plot([x[0]/self.width_cm_scale for x in contours_list[min_curv_cycle][i]],
-                         [-y[1]/self.height_cm_scale for y in contours_list[min_curv_cycle][i]], 'r')
+                         [-y[1]/self.height_cm_scale for y in contours_list[min_curv_cycle][i]], 'g--')
                 plt.savefig(os.path.join(img_dir, 'Seg_cont_{}'.format(i)))
                 plt.clf()
         # ----------------------------------------------------------------------------------------------------
@@ -742,16 +746,21 @@ class PickleReader:
     def read_images_and_get_indices(self):
         pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
         pickles.sort()
-        # pickles = [os.path.join(self.source_path, 'CurveData_DATA_CA161407.pck')]
+        # pickles = [os.path.join(self.source_path, 'AduHeart_DATA_07_C_160509.pck')]
 
         df_all_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t',
                                                   'Series_SOPID', 'Patient_ID'])
 
         for f, filename in enumerate(pickles):  # list of the pickle files in the folder
             self.filename = filename
+            if f < 19:
+                continue
             try:
                 data = pickle.load(open(filename, 'rb'))
             except pickle.UnpicklingError:
+                self._print_error_file_corrupted()
+                continue
+            except EOFError:
                 self._print_error_file_corrupted()
                 continue
 
