@@ -28,7 +28,6 @@ class Trace:
 
     def __init__(self, case_name, contours, interpolation_parameters=(), view='4C'):
         self.case_name = case_name
-        self.case_filename = self.case_name.split('/')[-1][:-4]
         self.view = view
         self.id = None
         self.number_of_frames = 0
@@ -39,14 +38,16 @@ class Trace:
         self.ventricle_curvature = []
         self.mean_curvature_over_time = []
         self.apices = []
-        self.biomarkers = pd.DataFrame(index=[self.case_name])
 
         if contours is not None:
             self.data = contours
+            self.case_filename = case_name
         else:
+            self.case_filename = self.case_name.split('/')[-1][:-4]
             self.data = self._read_echopac_output()
         self._interpolate_traces(trace_points_n=interpolation_parameters[0],
                                  temporal_smoothing=interpolation_parameters[1])
+        self.biomarkers = pd.DataFrame(index=[self.case_name])
         self.get_curvature_per_frame()
         print('CURVATURE_CALCULATED')
         self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)
@@ -441,6 +442,10 @@ class PickleReader:
 
         values, counts = np.unique(mask, return_counts=True)  # returned array is sorted
 
+        if len(counts) != 4:
+            self._save_failed_qc_image('Chamber mask missing', mask)
+            return False
+
         atrium_bp_ratio = counts[3]/counts[1]
         if atrium_bp_ratio > 1.5:
             self._save_failed_qc_image('atrium_bp_raitio_ {}'.format(atrium_bp_ratio), mask)
@@ -628,7 +633,6 @@ class PickleReader:
         min_curvature_index = self._find_trace_with_minimum_curvature(df_biomarkers)
         self._plot_relevant_cycle(traces_dict[min_curvature_index[0]])
 
-        # TODO: change indexes and lengths (new ones are no longer valid!)
         if plot_all:
             self._plot_all(segmentation_list, cycles_list, contours_list)
         else:
@@ -640,11 +644,10 @@ class PickleReader:
                 plt.subplot(121)
                 plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
                 plt.imshow(np.array(segmentation_list[min_curv_cycle][i]), cmap='YlOrBr', alpha=0.2)
-                # plt.show()
                 plt.subplot(122)
                 plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
-                plt.plot([x[0] for x in contours_list[min_curv_cycle][i]],
-                         [-y[1] for y in contours_list[min_curv_cycle][i]], 'r')
+                plt.plot([x[0]/self.width_cm_scale for x in contours_list[min_curv_cycle][i]],
+                         [-y[1]/self.height_cm_scale for y in contours_list[min_curv_cycle][i]], 'r')
                 plt.savefig(os.path.join(img_dir, 'Seg_cont_{}'.format(i)))
                 plt.clf()
         # ----------------------------------------------------------------------------------------------------

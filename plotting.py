@@ -146,7 +146,6 @@ class PlottingCurvature:
 
         ax1.set_title('Geometric point-to-point curvature')
         ax1.axhline(y=0, c='k', ls='-.', lw=1)
-        # ax1.axhline(y=-0.040, c='k', ls='-.', lw=1)
         ax1.axvline(x=20, c='k', ls='-.', lw=1)
         ax1.axvline(x=150, c='k', ls='-.', lw=1)
         ax1.set_ylim(-0.15, 0.30)
