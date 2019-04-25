@@ -443,17 +443,17 @@ class PickleReader:
         values, counts = np.unique(mask, return_counts=True)  # returned array is sorted
 
         if len(counts) != 4:
-            self._save_failed_qc_image('Chamber mask missing', mask)
+            # self._save_failed_qc_image('Chamber mask missing', mask)
             return False
 
         atrium_bp_ratio = counts[3]/counts[1]
         if atrium_bp_ratio > 1.5:
-            self._save_failed_qc_image('atrium_bp_raitio_ {}'.format(atrium_bp_ratio), mask)
+            # self._save_failed_qc_image('atrium_bp_raitio_ {}'.format(atrium_bp_ratio), mask)
             return False
 
         atrium_lv_ratio = counts[3]/(counts[1]+counts[2])
         if atrium_lv_ratio > 0.7:
-            self._save_failed_qc_image('atrium_lv_ratio_ {}'.format(atrium_lv_ratio), mask)
+            # self._save_failed_qc_image('atrium_lv_ratio_ {}'.format(atrium_lv_ratio), mask)
             return False
 
         min_bpx, min_bpy, max_bpx, max_bpy = self._find_extreme_coordinates(mask, values[1])
@@ -466,27 +466,27 @@ class PickleReader:
                      np.abs(max_bpy - max_myoy))  # distances[3]
 
         if distances[0] > 35:
-            self._save_failed_qc_image('delta_left_x_ {}'.format(distances[0]), mask)
+            # self._save_failed_qc_image('delta_left_x_ {}'.format(distances[0]), mask)
             return False
         if distances[1] > 35:
-            self._save_failed_qc_image('delta_lower_y_ {}'.format(distances[1]), mask)
+            # self._save_failed_qc_image('delta_lower_y_ {}'.format(distances[1]), mask)
             return False
         if distances[2] > 35:
-            self._save_failed_qc_image('delta_right_x_ {}'.format(distances[2]), mask)
+            # self._save_failed_qc_image('delta_right_x_ {}'.format(distances[2]), mask)
             return False
         if distances[3] > 15:
-            self._save_failed_qc_image('delta_higher_y_ {}'.format(distances[3]), mask)
+            # self._save_failed_qc_image('delta_higher_y_ {}'.format(distances[3]), mask)
             return False
 
         bp_mask = np.where(mask == values[1])
 
         bp_above_atrium = np.sum(bp_mask[0] > min_aty)/len(bp_mask[0])  # Blood pool above the atrium mask
         if bp_above_atrium > 0.08:
-            self._save_failed_qc_image('lowest_atrium_pixel_and_ratio {}'.format(bp_above_atrium), mask)
+            # self._save_failed_qc_image('lowest_atrium_pixel_and_ratio {}'.format(bp_above_atrium), mask)
             return False
 
         if min_bpy < 5:
-            self._save_failed_qc_image('blood pool at the edge of image', mask)
+            # self._save_failed_qc_image('blood pool at the edge of image', mask)
             return False
 
         return True
@@ -749,12 +749,11 @@ class PickleReader:
         # pickles = [os.path.join(self.source_path, 'AduHeart_DATA_07_C_160509.pck')]
 
         df_all_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t',
-                                                  'Series_SOPID', 'Patient_ID'])
+                                                  'Series_SOP', 'Patient_ID'])
 
         for f, filename in enumerate(pickles):  # list of the pickle files in the folder
             self.filename = filename
-            if f < 19:
-                continue
+
             try:
                 data = pickle.load(open(filename, 'rb'))
             except pickle.UnpicklingError:

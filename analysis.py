@@ -38,8 +38,8 @@ class StatAnalysis:
         print('Number of cycles: {}\n'
               'Discarded cycles (%): {}\n'
               'Cycles discarded due to faulty segmentations (%): {}\n'
-              'Cycles discarded due to faulty contouring (%): {}\n'.format(len(self.df.index),
-                                                                           *faulty_percentages))
+              'Cycles discarded due to faulty segmentations '
+              'and contouring (%): {}\n'.format(len(self.df.index), *faulty_percentages))
 
     def get_df_pre_processing(self):
         df_pre = self.df[self.df['min'] != 0]
@@ -112,7 +112,7 @@ class StatAnalysis:
 
 
 if __name__ == '__main__':
-    source = os.path.join('c:/', 'Data', 'Pickles', '_Output')
+    source = os.path.join('c:/', 'Data', 'Pickles', '_Output', 'Final')
     output = os.path.join(source, 'analysis')
     datafile = 'all_biomarkers.csv'
     anal = StatAnalysis(input_path=source, output_path=output, data_filename=datafile)

@@ -233,7 +233,7 @@ class Contour:
 
         percent_prev_contour_diff = np.abs(len(self.sorted_edge) - len(prev_cont)) / len(prev_cont)
         if percent_prev_contour_diff > 0.25:  # 25% of previous contour
-            self._save_failed_qc_image('percent_prev_cont {}'.format(percent_prev_contour_diff), mask)
+            # self._save_failed_qc_image('percent_prev_cont {}'.format(percent_prev_contour_diff), mask)
             return False
 
         values, counts = np.unique(mask, return_counts=True)  # returned array is sorted
@@ -247,27 +247,27 @@ class Contour:
         min_cont_x = np.min([c[0] for c in self.sorted_edge])
 
         if max_bp_y < max_cont_y - 0.6:
-            self._save_failed_qc_image('Contour over bp', mask)
+            # self._save_failed_qc_image('Contour over bp', mask)
             return False
 
         diff_max_y = np.abs(max_bp_y - max_cont_y)
         if diff_max_y > 10:
-            self._save_failed_qc_image('Diff_max_bp_y_max_cont_y {}'.format(diff_max_y), mask)
+            # self._save_failed_qc_image('Diff_max_bp_y_max_cont_y {}'.format(diff_max_y), mask)
             return False
 
         diff_min_y = np.abs(min_bp_y - min_cont_y)
         if diff_min_y > 15:
-            self._save_failed_qc_image('Diff_min_bp_y_min_cont_y {}'.format(diff_min_y), mask)
+            # self._save_failed_qc_image('Diff_min_bp_y_min_cont_y {}'.format(diff_min_y), mask)
             return False
 
         diff_max_x = np.abs(max_bp_x - max_cont_x)
         if diff_max_x > 15:
-            self._save_failed_qc_image('Diff_max_bp_x_max_cont_x {}'.format(diff_max_x), mask)
+            # self._save_failed_qc_image('Diff_max_bp_x_max_cont_x {}'.format(diff_max_x), mask)
             return False
 
         diff_min_x = np.abs(min_bp_x - min_cont_x)
         if diff_min_x > 15:
-            self._save_failed_qc_image('Diff_min_bp_x_min_cont_x {}'.format(diff_min_x), mask)
+            # self._save_failed_qc_image('Diff_min_bp_x_min_cont_x {}'.format(diff_min_x), mask)
             return False
 
         return True
