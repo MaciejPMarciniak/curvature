@@ -139,8 +139,8 @@ class PlottingCurvature:
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
 
         ax0.set_title('LV trace, full cycle'.format(self.id))
-        ax0.set_ylim(-130, 20)
-        ax0.set_xlim(-50, 50)
+        ax0.set_ylim(-100, 20)
+        ax0.set_xlim(-40, 40)
         ax0.set_xlabel('Short axis $[mm]$')
         ax0.set_ylabel('Long axis $[mm]$')
 

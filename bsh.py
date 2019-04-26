@@ -110,7 +110,7 @@ class Trace:
 
         if temporal_smoothing:
             for point in range(point_interpolated.shape[1]):
-                point_interpolated[:, point] = savgol_filter(point_interpolated[:, point], 9, polyorder=5,
+                point_interpolated[:, point] = savgol_filter(point_interpolated[:, point], 11, polyorder=5,
                                                              mode='interp')
 
         self.number_of_frames, self.number_of_points = point_interpolated.shape
@@ -163,9 +163,13 @@ class Trace:
 
         self.biomarkers['min'] = curv.loc[:, lower_bound:upper_bound].min().min()
         self.biomarkers['max'] = curv.loc[:, int(3/4*upper_bound):int(7/4*upper_bound)].max().max()
+        self.biomarkers['avg_min_basal_curv'] = curv.loc[:, lower_bound:upper_bound].mean().min()
+        self.biomarkers['avg_avg_basal_curv'] = curv.loc[:, lower_bound:upper_bound].mean().mean()
         self.biomarkers['min_delta'] = np.abs(curv[curv_min_col].max() - self.biomarkers['min'])
         self.biomarkers['max_delta'] = np.abs(curv[curv_max_col].min() - self.biomarkers['max'])
         self.biomarkers['amplitude_at_t'] = np.abs(curv.loc[curv_min_row].max() - self.biomarkers['min'])
+
+        print(self.biomarkers)
 
         return self.biomarkers
 
@@ -404,7 +408,7 @@ class PickleReader:
         self.s_sopid = None
         self.width_mm_scale = 1.0
         self.height_mm_scale = 1.0
-        # self.lookup_table = self._get_lookup_table()
+        self.case_id = ''
 
     def _get_lookup_table(self):
         return pd.read_csv(os.path.join(self.source_path, 'image_seriessopid_lookup.csv'))
@@ -558,7 +562,7 @@ class PickleReader:
         plot_tool.plot_all_frames(coloring_scheme='curvature')
         plot_tool.plot_heatmap()
 
-    def _from_images_to_indices(self, cycles_list, series_uid, plot_all=False):
+    def _from_images_to_indices(self, cycles_list, dimensions_list, series_uid, plot_all=False):
         """
         The main function to control the flow and call:
         1. Segmentation, which returns a list of lists (one for each cycle) of masks (one for each image).
@@ -570,7 +574,8 @@ class PickleReader:
         :return:
         """
 
-        df_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t'])
+        df_biomarkers = pd.DataFrame(columns=['min', 'max', 'avg_min_basal_curv', 'avg_avg_basal_curv',
+                                              'min_delta', 'max_delta', 'amplitude_at_t'])
 
         # ----- SEGMENTATION ---------------------------------------------------------------------------------
         segmentation_list = []
@@ -584,7 +589,7 @@ class PickleReader:
                 print('Cycle failed on segmentation quality check')
                 segmentation_list.append(None)
                 seg_id = '{}_{}'.format(series_uid, cycle_i)
-                df_biomarkers.loc[seg_id] = [0.0]*5
+                df_biomarkers.loc[seg_id] = [0.0] * 7
 
         # ----------------------------------------------------------------------------------------------------
 
@@ -601,14 +606,15 @@ class PickleReader:
                 if contours.all_cycle is not None and \
                         len(contours.all_cycle)/cycles_list[self.cycle_index].shape[2] > 0.7:
                     for c, cont in enumerate(contours.all_cycle):  # Rescaling to metric units (millimeters)
-                        cont = [(x[0] * self.width_mm_scale, x[1] * self.height_mm_scale) for x in cont]
+                        cont = [(x[0] * dimensions_list[segment_i][0],
+                                 x[1] * dimensions_list[segment_i][1]) for x in cont]
                         contours.all_cycle[c] = cont
                     contours_list.append(contours.all_cycle)  # list of contours of single cycles
                 else:
                     print('Cycle failed on contouring quality check')
                     contours_list.append(None)
                     seg_id = '{}_{}'.format(series_uid, segment_i)
-                    df_biomarkers.loc[seg_id] = [1.0] * 5
+                    df_biomarkers.loc[seg_id] = [1.0] * 7
             else:
                 print('Cycle excluded due to previous segmentation failure')
                 contours_list.append(None)
@@ -623,12 +629,18 @@ class PickleReader:
                 trace = Trace(case_name=trace_id, contours=contour,
                               interpolation_parameters=(500, True))
                 traces_dict[trace_id] = trace
+                np.savetxt(os.path.join(self.output_path,
+                                        'Curvatures', '{}_{}.csv'.format(self.case_id, str(contour_i))),
+                           np.array(trace.ventricle_curvature), delimiter=',', fmt='%.7f')
+                np.savetxt(os.path.join(self.output_path,
+                                        'Contours', '{}_{}.csv'.format(self.case_id, str(contour_i))),
+                           trace.data, delimiter=',', fmt='%.7f')
                 df_biomarkers = df_biomarkers.append(trace.biomarkers)
         # ----------------------------------------------------------------------------------------------------
 
         # ----- PLOTTING -------------------------------------------------------------------------------------
-        biomarkers_dir = check_directory(os.path.join(self.output_path, 'biomarkers'))
-        df_biomarkers.to_csv(os.path.join(biomarkers_dir, '{}.csv'.format(series_uid)))
+        # biomarkers_dir = check_directory(os.path.join(self.output_path, 'biomarkers'))
+        # df_biomarkers.to_csv(os.path.join(biomarkers_dir, '{}.csv'.format(series_uid)))
 
         if np.all(df_biomarkers['min'].nunique() == 1):
             self._print_error_file_cycles()
@@ -650,8 +662,9 @@ class PickleReader:
                 plt.imshow(np.array(segmentation_list[min_curv_cycle][i]), cmap='YlOrBr', alpha=0.2)
                 plt.subplot(122)
                 plt.imshow(np.flip(np.array(cycles_list[min_curv_cycle][:, :, i]), axis=1), cmap='gray')
-                plt.plot([x[0]/self.width_mm_scale for x in contours_list[min_curv_cycle][i]],
-                         [-y[1]/self.height_mm_scale for y in contours_list[min_curv_cycle][i]], 'g--')
+                plt.plot([x[0]/dimensions_list[min_curv_cycle][0] for x in contours_list[min_curv_cycle][i]],
+                         [-y[1]/dimensions_list[min_curv_cycle][1] for y in contours_list[min_curv_cycle][i]],
+                         'y--')
                 plt.savefig(os.path.join(img_dir, 'Seg_cont_{}'.format(i)))
                 plt.clf()
         # ----------------------------------------------------------------------------------------------------
@@ -661,7 +674,7 @@ class PickleReader:
 
     @staticmethod
     def _find_trace_with_minimum_curvature(df):
-        return df[['min']].idxmin(axis=0)
+        return df[['avg_min_basal_curv']].idxmin(axis=0)
 
     @staticmethod
     def _get_width_and_height_scales(start_angle, stop_angle, start_depth, stop_depth, resolution=256):
@@ -682,8 +695,6 @@ class PickleReader:
         xmax = -1 * np.min(np.cos(stop_angle % np.pi) * np.array([start_depth, stop_depth]))
         ymin = np.min(np.sin(angle_range % np.pi) * start_depth)
         ymax = np.max(np.sin(angle_range % np.pi) * stop_depth)
-        # print(start_angle, stop_angle, start_depth, stop_depth)
-        # print(xmin, xmax, ymin, ymax)
 
         height_scaler = (ymax - ymin) * 1000 / resolution
         width_scaler = (xmax - xmin) * 1000 / resolution
@@ -746,9 +757,9 @@ class PickleReader:
     def read_images_and_get_indices(self):
         pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
         pickles.sort()
-        # pickles = [os.path.join(self.source_path, 'AduHeart_DATA_07_C_160509.pck')]
 
-        df_all_biomarkers = pd.DataFrame(columns=['min', 'max', 'min_delta', 'max_delta', 'amplitude_at_t',
+        df_all_biomarkers = pd.DataFrame(columns=['min', 'max', 'avg_min_basal_curv', 'avg_avg_basal_curv',
+                                                  'min_delta', 'max_delta', 'amplitude_at_t',
                                                   'Series_SOP', 'Patient_ID'])
 
         for f, filename in enumerate(pickles):  # list of the pickle files in the folder
@@ -768,12 +779,8 @@ class PickleReader:
                 print(s_sopid)
                 self.s_sopid = s_sopid
 
-                for item in data[s_sopid]:
-                    if item['patient_id'] is not None:
-                        case_id = item['patient_id']
-                        break
-
                 cycle_movies = []
+                cycle_dimensions = []
                 for i, item in enumerate(data[s_sopid]):  # items of Series SOP instance UID entry
                     if self._check_pickle_integrity(item, filename) and \
                             item['RDCM_viewlabel'] == '4CH' and \
@@ -783,17 +790,18 @@ class PickleReader:
                             item['params']['depth_end'] is not None and \
                             item['params']['vector_angles'] is not None:
 
-                        case_id = item['patient_id']
+                        self.case_id = item['patient_id']
                         image_parameters = [item['params']['vector_angles'][0],
                                             item['params']['vector_angles'][-1],
                                             item['params']['depth_start'], item['params']['depth_end']]
-                        self.height_mm_scale, self.width_mm_scale = \
-                            self._get_width_and_height_scales(*image_parameters)
+
+                        # Dimensions of the image
+                        height_mm_scale, width_mm_scale = self._get_width_and_height_scales(*image_parameters)
 
                         # Entire acquisition of the image
                         scanconv_movie = item['scanconv_movie']
 
-                        # Frames closed to ECG markers of the cycles
+                        # Frames close to ECG markers of the cycles
                         cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector']))
                                         for trig_time in item['ecg_trigs']]
 
@@ -801,19 +809,23 @@ class PickleReader:
                         for frame in range(len((cycle_frames[:-1]))):
                             cycle_movies.append(scanconv_movie[:, :,
                                                 cycle_frames[frame]:cycle_frames[frame+1]])
+                            cycle_dimensions.append((width_mm_scale, height_mm_scale))
                         print(i)
                         print('len time vector: {}'.format(len(item['time_vector'])))
                         print('number of frames in a movie: {}'.format(scanconv_movie.shape[2]))
                         print('ECG_TRIGS: {}'.format(item['ecg_trigs']))
                         print('cycle_frames: {}'.format(cycle_frames))
-
+                        print('Scaling factors: width - {}, height - {}'.format(width_mm_scale, height_mm_scale))
                 print('cycle_movies: {}'.format(len(cycle_movies)))
 
                 if len(cycle_movies) > 0:
-                    tmp_biomarkers = self._from_images_to_indices(cycle_movies, s_sopid, plot_all=False)
+                    tmp_biomarkers = self._from_images_to_indices(cycle_movies, cycle_dimensions, s_sopid,
+                                                                  plot_all=False)
                     tmp_biomarkers.loc[:, 'Series_SOP'] = self.s_sopid
-                    tmp_biomarkers.loc[:, 'Patient_ID'] = case_id
+                    tmp_biomarkers.loc[:, 'Patient_ID'] = self.case_id
                     df_all_biomarkers = df_all_biomarkers.append(tmp_biomarkers, sort=False)
+                    df_all_biomarkers.to_csv(os.path.join(self.output_path, 'biomarkers',
+                                                          '{}.csv'.format(self.case_id)))
                 else:
                     self._print_error_file_corrupted()
         return df_all_biomarkers
