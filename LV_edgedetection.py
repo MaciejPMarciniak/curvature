@@ -180,8 +180,8 @@ class Contour:
         # plt.scatter(range(len(se_x)), se_x)
         # plt.plot(interp_se_x, 'r', lw=3)
 
-        smooth_se_x = savgol_filter(interp_se_x, 11, polyorder=3, mode='interp')[13:-13]
-        smooth_se_y = savgol_filter(interp_se_y, 11, polyorder=3, mode='interp')[13:-13]
+        smooth_se_x = savgol_filter(interp_se_x, 13, polyorder=5, mode='interp')[13:-13]
+        smooth_se_y = savgol_filter(interp_se_y, 13, polyorder=5, mode='interp')[13:-13]
 
         # plt.plot(range(13, len(smooth_se_x)+13), smooth_se_x, 'g')
         # plt.show()

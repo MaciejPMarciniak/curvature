@@ -102,8 +102,8 @@ class Trace:
                 # 'quintic': r**5 where r is the distance from the next point
                 # smoothing should be adjusted to the number of original points, but there is no clear
                 # criterion
-                rbf_x = Rbf(positions, [x[0] for x in self.data[trace]], smooth=20, function='quintic')
-                rbf_y = Rbf(positions, [y[1] for y in self.data[trace]], smooth=20, function='quintic')
+                rbf_x = Rbf(positions, [x[0] for x in self.data[trace]], smooth=50, function='quintic')
+                rbf_y = Rbf(positions, [y[1] for y in self.data[trace]], smooth=50, function='quintic')
 
                 point_interpolated[trace, ::2] = rbf_x(points_target)
                 point_interpolated[trace, 1::2] = rbf_y(points_target)
@@ -168,8 +168,6 @@ class Trace:
         self.biomarkers['min_delta'] = np.abs(curv[curv_min_col].max() - self.biomarkers['min'])
         self.biomarkers['max_delta'] = np.abs(curv[curv_max_col].min() - self.biomarkers['max'])
         self.biomarkers['amplitude_at_t'] = np.abs(curv.loc[curv_min_row].max() - self.biomarkers['min'])
-
-        print(self.biomarkers)
 
         return self.biomarkers
 
@@ -746,6 +744,14 @@ class PickleReader:
         txt_file.write('File {} is corrupted'.format(filename))
         txt_file.close()
 
+    def get_biomakers(self):
+        curves = glob.glob(os.path.join(self.output_path, 'Curvatures', '*.csv'))
+        curves.sort()
+        for curve in curves:
+            df_curve = pd.read_csv(curve)
+            df_curve = df_curve.mean(axis=0)
+            df_curve = df_curve.iloc[20:150]
+
     def _check_pickle_integrity(self, item, filename):
         item_fields = ['RDCM_viewlabel', 'time_vector', 'scanconv_movie', 'ecg_trigs']
         for field in item_fields:
@@ -845,8 +851,8 @@ if __name__ == '__main__':
     output = os.path.join('c:/', 'Data', 'Pickles', '_Output')
     model = os.path.join('C:/', 'Code', 'curvature', 'model')
     pick = PickleReader(source, output, model)
-    pick.extract_curvature_indices()
-
+    # pick.extract_curvature_indices()
+    pick.get_biomakers()
     # ------------------------------------------------------------------------------------------------------------------
     # Cohort
     # source = os.path.join('home','mat','Python','data','curvature')
