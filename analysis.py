@@ -55,10 +55,21 @@ class StatAnalysis:
               'Cycles discarded due to faulty segmentations '
               'and contouring (%): {}\n'.format(len(self.df.index), *faulty_percentages))
 
-    def get_df_pre_processing(self):
+    @staticmethod
+    def pop_std(x):
+        return x.std(ddof=0)
+
+    def get_df_pre_processing(self, print=False):
         df_pre = self.df[self.df['min'] != 0]
         df_pre = df_pre[df_pre['min'] != 1]
-        return df_pre.groupby(by=['Patient_ID', 'Series_SOP']).mean()
+
+        pd.set_option('display.max_columns', 500)
+        df_pre = df_pre.groupby(['Patient_ID', 'Series_SOP']).agg(['mean', 'std'])
+
+        df_renamed = df_pre.set_axis(['_'.join(c) for c in df_pre.columns], axis='columns', inplace=False)
+        df_renamed.to_csv(os.path.join(self.output_path, 'analysis', 'Grouped_by_mean_and_std.csv'))
+
+        return df_renamed
 
     def _check_normality_assumptions(self):
         # https://docs.scipy.org/doc/scipy - 0.14.0/reference/generated/scipy.stats.levene.html
@@ -158,9 +169,6 @@ class StatAnalysis:
 
         # Log transform data:
         _df = self.df
-        _df = self._log_transform_data('avg_min_basal_curv', False)
-        _df = self._log_transform_data('avg_avg_basal_curv', False)
-        _df = self._log_transform_data('min', False)
 
         print(_df[['avg_min_basal_curv', 'avg_avg_basal_curv', 'min']])
         # _df = _df[_df['label'] > 0]
@@ -191,46 +199,52 @@ class StatAnalysis:
         # Turn one class to 1 and rest to zero, then apply roc curve
         # print(roc_auc_score(y_test, y_pred, average='samples'))
 
-    def plot_histograms(self, covariates=('min',)):
+    def plot_histograms(self, covariates=('avg_min_basal_curv',)):
         for cov in covariates:
 
             plot_tool = PlottingDistributions(self.df, cov, output_path=self.output_path)
             plot_tool.plot_multiple_distributions(group_by='label')
             plot_tool.plot_multiple_boxplots(group_by='label')
-            sns.distplot(self.df.loc[self.df['label'] == 0, cov], kde=False, label='control', rug=True, color='r', bins=12)
-            sns.distplot(self.df.loc[self.df['label'] == 1, cov], kde=False, label='htn', rug=True, color='g', bins=15)
-            sns.distplot(self.df.loc[self.df['label'] == 2, cov], kde=False, label='bsh', rug=True, color='b', bins=10)
-            plt.legend()
+            sns.distplot(self.df.loc[self.df[cov] < -0.033, cov], kde=False, rug=True, color='r')
+            sns.distplot(self.df.loc[self.df[cov] >= -.033, cov], kde=False, rug=True, color='g', bins=None)
+            # sns.distplot(self.df.loc[:, cov], kde=True, rug=True, color='b', bins=None)
+            # sns.distplot(self.df.loc[self.df['label'] == 0, cov], kde=False, label='control', rug=True, color='r', bins=12)
+            # sns.distplot(self.df.loc[self.df['label'] == 1, cov], kde=False, label='htn', rug=True, color='g', bins=15)
+            # sns.distplot(self.df.loc[self.df['label'] == 2, cov], kde=False, label='bsh', rug=True, color='b', bins=10)
+            # plt.legend()
             plt.savefig(os.path.join(self.output_path, '{} histogram.png'.format(cov)))
-            plt.clf()
+            plt.close()
 
         # plt.figure()
         parallel_coordinates(self.df[['label', 'min', 'max', 'avg_min_basal_curv', 'avg_avg_basal_curv',
                                       'min_delta', 'max_delta', 'amplitude_at_t']], 'label')
         plt.savefig(os.path.join(self.output_path, 'covariate_distributions.png'))
 
-    def plot_relations(self, pairs=(('min', 'max'))):
+    def plot_relations(self, pairs=('min', 'max')):
         plot_tool = PlottingDistributions(self.df, pairs[0][0], output_path=self.output_path)
         for pair in pairs:
             plot_tool.plot_with_labels(pair[0], pair[1])
 
 
 if __name__ == '__main__':
-    source = os.path.join('c:/', 'Data', 'Pickles', '_Output', 'Final', 'analysis')
-    # source = os.path.join('c:/', 'Data', 'Pickles', '_Output', 'Final')
+
+    # source = os.path.join('c:/', 'Data', 'Pickles', '_Output', 'Final', 'analysis')
+    # datafile = 'biomarkers_proper_scale.csv'
+
+    source = os.path.join('c:/', 'Data', 'Pickles', '_Output', 'Final')
+    datafile = 'all_biomarkers.csv'
     output = source
-    datafile = 'biomarkers_proper_scale.csv'
+
     anal = StatAnalysis(input_path=source, output_path=output, data_filename=datafile)
     anal.read_dataframe('Patient_ID')
     # Preprocessing
     # anal.describe_quality_assessment()
-    # group_anal = anal.get_df_pre_processing()
+    group_anal = anal.get_df_pre_processing(print=True)
     # group_anal.to_csv(os.path.join(output, 'analysis', 'biomarkers_proper_scale.csv'))
 
     # Analysis
-
     # anal.plot_histograms(covariates=('min', 'avg_min_basal_curv', 'avg_avg_basal_curv'))
     # anal.plot_relations(pairs=(('min', 'avg_min_basal_curv'), ('min',  'avg_avg_basal_curv'),
     #                            ('avg_min_basal_curv', 'avg_avg_basal_curv')))
-    anal.perform_analysis()
+    # anal.perform_analysis()
     # anal.predict_with_lr()
