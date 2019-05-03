@@ -88,12 +88,15 @@ class Trace:
         # TODO: make a similar function that reads 2Dstrain exports (np array instead of list of tuple, the
         # TODO: same number of points in each frame
 
-        if trace_points_n is None:
-            point_interpolated = self.data
-        else:
-            x_time_steps = np.arange(len(self.data))
-            point_interpolated = np.zeros((len(self.data), trace_points_n*2))
+        x_time_steps = np.arange(len(self.data))
 
+        if trace_points_n is None:
+            point_interpolated = np.zeros((len(self.data), len(self.data[0]) * 2))
+            for trace in x_time_steps:
+                point_interpolated[trace, ::2] = [x[0] for x in self.data[trace]]
+                point_interpolated[trace, 1::2] = [y[1] for y in self.data[trace]]
+        else:
+            point_interpolated = np.zeros((len(self.data), trace_points_n * 2))
             for trace in x_time_steps:
                 positions = np.arange(len(self.data[trace]))
                 points_target = np.linspace(0, len(self.data[trace]) - 1, trace_points_n)
@@ -110,6 +113,7 @@ class Trace:
 
         if temporal_smoothing:
             for point in range(point_interpolated.shape[1]):
+
                 point_interpolated[:, point] = savgol_filter(point_interpolated[:, point], 11, polyorder=5,
                                                              mode='interp')
 
@@ -494,9 +498,7 @@ class PickleReader:
 
         return True
 
-    def _segmentation_with_model(self, cycle_images):
-
-        exec_net, plugin = self._get_exec_net()
+    def _segmentation_with_model(self, cycle_images, exec_net, plugin):
 
         cycle_segmentations = []
 
@@ -526,9 +528,6 @@ class PickleReader:
                                                      self.s_sopid.replace('.', '_'), str(self.cycle_index),
                                                      'failed_{}.png'.format(self.img_index)))
                     failed += 1
-
-        del exec_net
-        del plugin
 
         if not failed / cycle_images.shape[2] > 0.35:
             return cycle_segmentations
@@ -589,10 +588,11 @@ class PickleReader:
         # ----- SEGMENTATION ---------------------------------------------------------------------------------
         segmentation_list = []
         df = pd.DataFrame(index=['Patient_ID'], columns=['x', 'y'])
+        exec_net, plugin = self._get_exec_net()
         for cycle_i, cycle in enumerate(cycles_list):
             print('cycle_length: {}'.format(cycle.shape[2]))
             self.cycle_index = cycle_i
-            segmentations = self._segmentation_with_model(cycle)
+            segmentations = self._segmentation_with_model(cycle, exec_net, plugin)
             if segmentations is not None:
                 self._find_and_save_ed(segmentations, cycle_i)
                 df.loc['{}_{}'.format(self.case_id, cycle_i)] = dimensions_list[cycle_i]
@@ -602,6 +602,8 @@ class PickleReader:
                 segmentation_list.append(None)
                 seg_id = '{}_{}'.format(series_uid, cycle_i)
                 df_biomarkers.loc[seg_id] = [0.0] * 7
+        del exec_net
+        del plugin
         df.to_csv(os.path.join(self.output_path, 'EDs', '{}.csv'.format(self.case_id)))
         # ----------------------------------------------------------------------------------------------------
 
@@ -639,7 +641,7 @@ class PickleReader:
             if contour is not None:
                 trace_id = series_uid+'_'+str(contour_i)
                 trace = Trace(case_name=trace_id, contours=contour,
-                              interpolation_parameters=(500, True))
+                              interpolation_parameters=(None, True))
                 traces_dict[trace_id] = trace
                 np.savetxt(os.path.join(self.output_path,
                                         'Curvatures', '{}_{}.csv'.format(self.case_id, str(contour_i))),
@@ -659,7 +661,8 @@ class PickleReader:
             return df_biomarkers
         # Plotting: the trace with maximum curvature of the case
         min_curvature_index = self._find_trace_with_minimum_curvature(df_biomarkers)
-        self._plot_relevant_cycle(traces_dict['{}_{}'.format(self.filename, self.case_id)])
+
+        self._plot_relevant_cycle(traces_dict[min_curvature_index[0]])
 
         if plot_all:
             self._plot_all(segmentation_list, cycles_list, contours_list)
@@ -814,7 +817,7 @@ class PickleReader:
                             item['scanconv_movie'].shape[2] > 1 and \
                             item['params']['depth_start'] is not None and \
                             item['params']['depth_end'] is not None and \
-                            item['params']['vector_angles'] is not None:
+                            item['params']['vector_angles'] is not None:  # and i < 4:
 
                         self.case_id = item['patient_id']
                         image_parameters = [item['params']['vector_angles'][0],
@@ -833,6 +836,7 @@ class PickleReader:
 
                         # Separated movies of the cycles
                         for frame in range(len((cycle_frames[:-1]))):
+                        # for frame in range(len((cycle_frames[-2:-1]))):  # testing
                             cycle_movies.append(scanconv_movie[:, :,
                                                 cycle_frames[frame]:cycle_frames[frame+1]])
                             cycle_dimensions.append((width_mm_scale, height_mm_scale))

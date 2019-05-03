@@ -4,7 +4,8 @@ from ntpath import basename
 import argparse
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.signal import savgol_filter
+from scipy.interpolate import Rbf
+from scipy.interpolate import UnivariateSpline
 import cv2
 import shutil
 
@@ -17,7 +18,7 @@ def check_directory(directory):
 
 class Contour:
 
-    def __init__(self, segmentations_path, output_path, segmentation_cycle, s_sopid, cycle_index):
+    def __init__(self, segmentations_path, output_path, segmentation_cycle=None, s_sopid=None, cycle_index=None):
         self.segmentations_path = segmentations_path
         self.output_path = self._check_directory(output_path)
         self.segmentation_cycle = segmentation_cycle
@@ -69,10 +70,9 @@ class Contour:
         x_pos = indices[1]
         return np.array([(x, y) for x, y in zip(x_pos, y_pos)])
 
-    def _look_around(self, coordinates_of_edge, cur_point, previous_point):
+    def _look_around(self, coordinates_of_edge, cur_point, previous_point, existing_edge):
 
         coordinates_of_edge = coordinates_of_edge.tolist()
-        # TODO: Use hash tables for faster checking
         touching_points = list()
         for i in [cur_point[0]-1, cur_point[0], cur_point[0]+1]:
             for j in [cur_point[1]-1, cur_point[1], cur_point[1]+1]:
@@ -85,13 +85,14 @@ class Contour:
             return touching_points[0], False
 
         for point in touching_points:  # If more points were found, return diagonal one
-            if point[0] != cur_point[0] and point[1] != cur_point[1] and point not in self.sorted_edge:
+            if point[0] != cur_point[0] and point[1] != cur_point[1] and point not in existing_edge:
                 return point, False
 
         for point in touching_points:
-            # Due to segmentation faults, there are special cases - then choose point further from the previous point
+            # Due to segmentation faults, there are special cases -
+            # then choose point further from the previous point
             if point[0] != previous_point[0] and point[1] != previous_point[1] \
-                    and point not in self.sorted_edge:
+                    and point not in existing_edge:
                 return point, False
 
         return cur_point, True
@@ -142,53 +143,37 @@ class Contour:
         :param coordinates_of_edge: list of (x, y) coordinates of the edge on 2D plane
         :return: sorted list of coordinates of the edge
         """
-        self.sorted_edge = list()
+        sorted_edge = list()
         edge_points = list()
         cur_point = tuple(max(coordinates_of_edge, key=lambda x: x[1]))
         prev_point = cur_point
-        self.sorted_edge.append(cur_point)
+        sorted_edge.append(cur_point)
         while 1:
             try:
-                new_point, flag = self._look_around(coordinates_of_edge, cur_point, prev_point)
+                new_point, flag = self._look_around(coordinates_of_edge, cur_point, prev_point, sorted_edge)
             except TypeError:
-                plt.scatter(self.sorted_edge, s=1)
+                plt.scatter(sorted_edge, s=1)
                 plt.xlim((0, 256))
                 plt.ylim((-256, 0))
                 self._save_failed_qc_image('Search for new point failed')
-
 
             if flag:
                 edge_points.append(cur_point)
                 if len(edge_points) == 2:
                     break
-                self.sorted_edge.reverse()
-                cur_point = self.sorted_edge[-1]
-                prev_point = self.sorted_edge[-2]
+                sorted_edge.reverse()
+                cur_point = sorted_edge[-1]
+                prev_point = sorted_edge[-2]
             else:
                 prev_point = cur_point
                 cur_point = new_point
-                self.sorted_edge.append(cur_point)
+                sorted_edge.append(cur_point)
 
         basal_septal_edge = min(edge_points, key=lambda x: x[0])
-        if basal_septal_edge != self.sorted_edge[0]:
-            self.sorted_edge.reverse()
-        se_x = self._expand_edge(np.array([x[0] for x in self.sorted_edge]))
-        se_y = self._expand_edge(np.array([y[1] for y in self.sorted_edge]))
-        interp_se_x = self.smooth(se_x)[7:-7]
-        interp_se_y = self.smooth(se_y)[7:-7]
+        if basal_septal_edge != sorted_edge[0]:
+            sorted_edge.reverse()
 
-        # plt.scatter(range(len(se_x)), se_x)
-        # plt.plot(interp_se_x, 'r', lw=3)
-
-        smooth_se_x = savgol_filter(interp_se_x, 13, polyorder=5, mode='interp')[13:-13]
-        smooth_se_y = savgol_filter(interp_se_y, 13, polyorder=5, mode='interp')[13:-13]
-
-        # plt.plot(range(13, len(smooth_se_x)+13), smooth_se_x, 'g')
-        # plt.show()
-
-        self.sorted_edge = [(x, y) for x, y in zip(smooth_se_x, smooth_se_y)]
-
-        return self.sorted_edge
+        return sorted_edge
 
     @staticmethod
     def _expand_edge(sorted_edge_axis):
@@ -196,10 +181,10 @@ class Contour:
         end_ = np.ones(10) * sorted_edge_axis[-1]
         return np.concatenate((beg_, sorted_edge_axis, end_))
 
-    def _save_results(self, cur_edge, basename_file):
+    def _save_results(self, basename_file):
         out_dir = self._check_directory(os.path.join(self.output_path, 'Contour_tables'))
         np.savetxt(os.path.join(out_dir, basename_file + '.csv'), self.sorted_edge)
-        plt.imshow(cur_edge, cmap='gray')
+        plt.imshow(self.sorted_edge, cmap='gray')
         out_dir = self._check_directory(os.path.join(self.output_path, 'Edge_images'))
         plt.savefig(os.path.join(out_dir, basename_file + '.png'))
         plt.clf()
@@ -213,7 +198,7 @@ class Contour:
     def _lv_endo_edges(self, seg_mask):
 
         if np.any(seg_mask.size != (256, 256)):
-            print(seg_mask.size)
+            print('segmented mask size: {}'.format(seg_mask.size))
             seg_mask = cv2.resize(np.array(seg_mask), (256, 256))
 
         if seg_mask.size == (256, 256, 3):
@@ -224,29 +209,49 @@ class Contour:
         current_lv_edge = self._extract_edge_image()
         coord_lv = self._pair_coordinates(current_lv_edge)
         coord_lv_ordered = self._walk_on_edge(coord_lv)
+
         if len(coord_lv_ordered) < 100:
             self._save_failed_qc_image('Not enough edge points!', seg_mask_gray)
 
         return coord_lv_ordered
 
-    def _check_contour_quality(self, prev_cont, mask):
-
-        percent_prev_contour_diff = np.abs(len(self.sorted_edge) - len(prev_cont)) / len(prev_cont)
-        if percent_prev_contour_diff > 0.25:  # 25% of previous contour
-            # self._save_failed_qc_image('percent_prev_cont {}'.format(percent_prev_contour_diff), mask)
-            return False
+    def _check_contour_quality(self, mask, prev_cont):
 
         values, counts = np.unique(mask, return_counts=True)  # returned array is sorted
+
+        tmp_smooth = self._fit_border_through_pixels(len(self.sorted_edge))
+        # se_x = np.array([x[0] for x in self.sorted_edge])
+        # se_y = np.array([y[1] for y in self.sorted_edge])
+        # se_x2 = np.array([x[0] for x in prev_cont])
+        # se_y2 = np.array([y[1] for y in prev_cont])
+        # plt.scatter(se_x, -se_y)
+        # plt.scatter(se_x2, -se_y2, marker='d')
+        # plt.imshow(mask, cmap='gray')
+        # print('a')
+        # plt.show()
+        # print('b')
 
         positions = np.where(mask == values[1])
         max_bp_y, max_bp_x = [np.max(p) for p in positions]
         min_bp_y, min_bp_x = [np.min(p) for p in positions]
-        max_cont_y = np.max([-c[1] for c in self.sorted_edge])
-        min_cont_y = np.min([-c[1] for c in self.sorted_edge])
-        max_cont_x = np.max([c[0] for c in self.sorted_edge])
-        min_cont_x = np.min([c[0] for c in self.sorted_edge])
+        max_cont_y = np.max([-c[1] for c in tmp_smooth])
+        min_cont_y = np.min([-c[1] for c in tmp_smooth])
+        max_cont_x = np.max([c[0] for c in tmp_smooth])
+        min_cont_x = np.min([c[0] for c in tmp_smooth])
 
-        if max_bp_y < max_cont_y - 0.6:
+        percent_prev_contour_diff = np.abs(len(self.sorted_edge) - len(prev_cont)) / len(prev_cont)
+        if percent_prev_contour_diff > 0.25:  # 25% of previous contour
+            print(percent_prev_contour_diff)
+            # self._save_failed_qc_image('percent_prev_cont {}'.format(percent_prev_contour_diff), mask)
+            return False
+
+        if np.linalg.norm(np.array(tmp_smooth[0]) - np.array(tmp_smooth[-1])) < 10:
+            print(tmp_smooth)
+            print(np.linalg.norm(np.array(tmp_smooth) - np.array(tmp_smooth)))
+            # self._save_failed_qc_image('Contour covering entire bp', mask)
+            return False
+
+        if max_bp_y < max_cont_y - 5:
             # self._save_failed_qc_image('Contour over bp', mask)
             return False
 
@@ -279,6 +284,7 @@ class Contour:
         plt.title(plot_title)
         case_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
                                                 self.s_sopid.replace('.', '_')))
+        print(case_dir)
         shutil.rmtree('{}/*'.format(case_dir), ignore_errors=True)
         failed_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
                                                   self.s_sopid.replace('.', '_'), str(self.cycle_index)))
@@ -286,29 +292,70 @@ class Contour:
                                                                    self.cycle_index)))
         plt.close()
 
+    def _fit_border_through_pixels(self, new_resolution):
+
+        se_x = np.array([x[0] for x in self.sorted_edge])
+        se_y = np.array([y[1] for y in self.sorted_edge])
+        fx = UnivariateSpline(range(len(se_x)), se_x, s=int(len(se_x)/6))
+        fy = UnivariateSpline(range(len(se_y)), se_y, s=int(len(se_y)/10))
+        ss = np.linspace(0, len(se_x), new_resolution)
+        fitted_x = fx(ss)
+        fitted_y = fy(ss)
+
+        return [(x, y) for x, y in zip(fitted_x, fitted_y)]
+
+        # plt.scatter(range(len(se_x) - 20), se_x[10:-10])
+        # plt.plot(fitted_x, 'k', lw=4)
+        # plt.show()
+
+        # se_x = self._expand_edge(np.array([x[0] for x in self.sorted_edge]))
+        # se_y = self._expand_edge(np.array([y[1] for y in self.sorted_edge]))
+        # rbf_fx = Rbf(np.arange(len(se_x)), se_x, smooth=500, function='cubic')
+        # rbf_fy = Rbf(np.arange(len(se_y)), se_y, smooth=500, function='cubic')
+        # rbf_x = rbf_fx(ss)[10:-10]
+        # rbf_y = rbf_fy(ss)[10:-10]
+        # plt.plot(rbf_x, 'g', lw=4)
+        # interp_se_x = self.smooth(se_x)[17:-17]
+        # interp_se_y = self.smooth(se_y)[17:-17]
+        # print('original: {}'.format(len(np.array([x[0] for x in self.sorted_edge]))))
+        # print('transformed: {}'.format(len(se_x)))
+        # print('fitted: {}'.format(len(fitted_x)))
+        # plt.plot(interp_se_x, 'r', lw=3)
+
+        # print('len(fitted_x) {}'.format(len(fitted_x)))
+        # print(len(fitted_y))
+        # print('len(self.sorted_edge): {}'.format(len(self.sorted_edge)))
+        # plt.plot(fitted_x, fitted_y)
+        # plt.show()
+
     def lv_endo_edges(self):
 
         if self.segmentations_path is not None:
             for seg_file in self.seg_files:
                 print(seg_file)
                 seg_mask = cv2.imread(seg_file)
-                endo_coords = self._lv_endo_edges(seg_mask)
-                self._save_results(endo_coords, basename(seg_file)[:-4])
+                self.sorted_edge = self._lv_endo_edges(seg_mask)
+                self._save_results(basename(seg_file)[:-4])
 
         elif self.segmentation_cycle is not None:
 
             print('length of the cycle: {}'.format(len(self.segmentation_cycle)))
             cycle_coords = []
-            self._lv_endo_edges(self.segmentation_cycle[0])
+            self.sorted_edge = self._lv_endo_edges(self.segmentation_cycle[0])
             prev_cont = self.sorted_edge
 
             failed = 0
             for seg_img_i, seg_img in enumerate(self.segmentation_cycle):
-                endo_coords = self._lv_endo_edges(seg_img)
+                self.sorted_edge = self._lv_endo_edges(seg_img)
                 self.img_index = seg_img_i
-                if self._check_contour_quality(prev_cont, np.array(seg_img)):
-                    cycle_coords.append(endo_coords[::3])
+                if self._check_contour_quality(np.array(seg_img), prev_cont):
+                    cycle_coords.append(self._fit_border_through_pixels(500))
                     prev_cont = self.sorted_edge
+                    # se_x = np.array([x[0] for x in self._fit_border_through_pixels(500)])
+                    # se_y = np.array([y[1] for y in self._fit_border_through_pixels(500)])
+                    # plt.imshow(seg_img)
+                    # plt.scatter(se_x, -se_y)
+                    # plt.show()
                 else:
                     failed += 1
 
@@ -320,9 +367,10 @@ class Contour:
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Create contours to input into the curvature model')
-    parser.add_argument('-s', '--segmentations', help='Segmentation results from NTNU model', required=True)
-    parser.add_argument('-o', '--output_path', help='Directory where output will be stored', required=True)
-    args = parser.parse_args()
-    cont = Contour(args.segmentations, args.output_path)
+    # parser = argparse.ArgumentParser(description='Create contours to input into the curvature model')
+    # parser.add_argument('-s', '--segmentations', help='Segmentation results from NTNU model', required=True)
+    # parser.add_argument('-o', '--output_path', help='Directory where output will be stored', required=True)
+    # args = parser.parse_args()
+
+    cont = Contour(os.getcwd(), os.getcwd())
     cont.lv_endo_edges()
