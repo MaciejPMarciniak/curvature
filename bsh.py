@@ -424,8 +424,6 @@ class PickleReader:
         self.model_path = model_path
         self.filename = None
         self.s_sopid = None
-        self.width_mm_scale = 1.0
-        self.height_mm_scale = 1.0
         self.cycle_index = 0
         self.case_id = ''
 
@@ -540,35 +538,15 @@ class PickleReader:
                 if self._check_mask_quality(np.array(image_mask)):
                     cycle_segmentations.append(image_mask)
                 else:
-                    img_from_array.save(os.path.join(self.output_path, 'failed_qc',
-                                                     self.s_sopid.replace('.', '_'), str(self.cycle_index),
-                                                     'failed_{}.png'.format(self.img_index)))
+                    failed_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
+                                                 self.s_sopid.replace('.', '_'), str(self.cycle_index)))
+                    img_from_array.save(os.path.join(failed_dir, 'failed_{}.png'.format(self.img_index)))
                     failed += 1
 
         if not failed / cycle_images.shape[2] > 0.35:
             return cycle_segmentations
         else:
             return None
-
-    @staticmethod
-    def _apply_kalman(curvature):
-        tran = np.eye(2 * curvature.shape[1], 2 * curvature.shape[1])
-        obs = np.zeros((int(tran.shape[0] / 2), tran.shape[0]))
-        init_mean = np.zeros(2 * curvature.shape[1])
-        for i in range(tran.shape[1] - 1):
-            print(i)
-            tran[i, i + 1] = 1
-            if not i % 2:
-                obs[int(i / 2), i] = 1
-                init_mean[i] = curvature[0][int(i / 2)]
-        print(tran[:10, :10])
-        print(obs[:10, :10])
-        print(init_mean[:10])
-        kf = KalmanFilter(transition_matrices=tran,
-                          observation_matrices=obs,
-                          initial_state_mean=init_mean)
-
-        curvature, _ = kf.em(curvature).smooth(curvature)
 
     def _plot_relevant_cycle(self, trace):
         traces_folder = check_directory(os.path.join(self.output_path, 'traces'))
@@ -587,7 +565,7 @@ class PickleReader:
         plt.savefig(os.path.join(self.output_path, 'EDs', '{}_{}.png'.format(self.case_id, cycle_id)))
         plt.close()
 
-    def _from_images_to_indices(self, cycles_list, dimensions_list, series_uid, plot_all=False):
+    def _from_images_to_indices(self, cycles_list, dimensions_list, plot_all=False):
         """
         The main function to control the flow and call:
         1. Segmentation, which returns a list of lists (one for each cycle) of masks (one for each image).
@@ -617,7 +595,7 @@ class PickleReader:
             else:
                 print('Cycle failed on segmentation quality check')
                 segmentation_list.append(None)
-                seg_id = '{}_{}'.format(series_uid, cycle_i)
+                seg_id = '{}_{}'.format(self.s_sopid, cycle_i)
                 df_biomarkers.loc[seg_id] = [0.0] * 7
         del exec_net
         del plugin
@@ -644,7 +622,7 @@ class PickleReader:
                 else:
                     print('Cycle failed on contouring quality check')
                     contours_list.append(None)
-                    seg_id = '{}_{}'.format(series_uid, segment_i)
+                    seg_id = '{}_{}'.format(self.s_sopid, segment_i)
                     df_biomarkers.loc[seg_id] = [1.0] * 7
             else:
                 print('Cycle excluded due to previous segmentation failure')
@@ -656,7 +634,7 @@ class PickleReader:
         traces_dict = {}
         for contour_i, contour in enumerate(contours_list):
             if contour is not None:
-                trace_id = series_uid+'_'+str(contour_i)
+                trace_id = self.s_sopid + '_'+str(contour_i)
                 trace = Trace(case_name=trace_id, contours=contour,
                               interpolation_parameters=(None, False))
                 traces_dict[trace_id] = trace
@@ -795,6 +773,14 @@ class PickleReader:
             if item[field] is None:
                 self._print_error_file_pickle((filename, field))
                 return False
+
+        if not len(item['time_vector']) > 1 and \
+                item['scanconv_movie'].shape[2] > 1 and \
+                item['params']['depth_start'] is not None and \
+                item['params']['depth_end'] is not None and \
+                item['params']['vector_angles'] is not None:
+            return False
+
         return True
 
     def read_images_and_get_indices(self, get_ed=False):
@@ -808,9 +794,6 @@ class PickleReader:
 
         for f, filename in enumerate(pickles):  # list of the pickle files in the folder
             self.filename = filename
-            # if not f > 40:
-            #     print(self.filename)
-            #     continue
             try:
                 data = pickle.load(open(filename, 'rb'))
             except pickle.UnpicklingError:
@@ -825,17 +808,11 @@ class PickleReader:
                 print(s_sopid)
                 self.s_sopid = s_sopid
 
-                print('passed: {}'.format(self.s_sopid))
                 cycle_movies = []
                 cycle_dimensions = []
                 for i, item in enumerate(data[s_sopid]):  # items of Series SOP instance UID entry
                     if self._check_pickle_integrity(item, filename) and \
-                            item['RDCM_viewlabel'] == '4CH' and \
-                            len(item['time_vector']) > 1 and \
-                            item['scanconv_movie'].shape[2] > 1 and \
-                            item['params']['depth_start'] is not None and \
-                            item['params']['depth_end'] is not None and \
-                            item['params']['vector_angles'] is not None:  # and i < 4:
+                            item['RDCM_viewlabel'] == '4CH':  # and i < 4:
 
                         self.case_id = item['patient_id']
                         image_parameters = [item['params']['vector_angles'][0],
@@ -854,20 +831,18 @@ class PickleReader:
 
                         # Separated movies of the cycles
                         for frame in range(len((cycle_frames[:-1]))):
-                        # for frame in range(len((cycle_frames[-3:-2]))):  # testing
+                            # for frame in range(len((cycle_frames[-3:-2]))):  # testing
                             cycle_movies.append(scanconv_movie[:, :,
                                                 cycle_frames[frame]:cycle_frames[frame+1]])
                             cycle_dimensions.append((width_mm_scale, height_mm_scale))
-                        print(i)
+
                         print('len time vector: {}'.format(len(item['time_vector'])))
-                        print('number of frames in a movie: {}'.format(scanconv_movie.shape[2]))
-                        print('ECG_TRIGS: {}'.format(item['ecg_trigs']))
                         print('cycle_frames: {}'.format(cycle_frames))
                         print('Scaling factors: width - {}, height - {}'.format(width_mm_scale, height_mm_scale))
                 print('cycle_movies: {}'.format(len(cycle_movies)))
 
                 if len(cycle_movies) > 0:
-                    tmp_biomarkers = self._from_images_to_indices(cycle_movies, cycle_dimensions, s_sopid,
+                    tmp_biomarkers = self._from_images_to_indices(cycle_movies, cycle_dimensions,
                                                                   plot_all=False)
                     tmp_biomarkers.loc[:, 'Series_SOP'] = self.s_sopid
                     tmp_biomarkers.loc[:, 'Patient_ID'] = self.case_id
@@ -877,6 +852,136 @@ class PickleReader:
                 else:
                     self._print_error_file_corrupted()
         return df_all_biomarkers
+
+    @staticmethod
+    def _crop_image(image, mask, dimensions, border=None):
+
+        if border is None:
+            myo = np.where(mask == 170)
+            base = np.max(myo[0]) + 10 if np.max(myo[0]) + 10 < 255 else 255
+            apex = np.min(myo[0]) - 5 if np.min(myo[0]) - 5 > 0 else 0
+            center = int(np.mean(np.where(mask == 85)[1]))
+            crop_len = base - apex
+            left, right = center - int(crop_len / 2), center + int(crop_len / 2)
+            border = [apex, base, left, right]
+
+        vertical_len = border[1] - border[0]
+        horizontal_len = border[3] - border[2]
+        cropped_image = image[border[0]:border[1], border[2]:border[3]]
+        cropped_image = cv2.resize(np.array(cropped_image), (256, 256))
+        cropped_dimensions = np.array([dimensions[0] * vertical_len, dimensions[1] * horizontal_len]) / 256
+
+        # plt.subplot(121)
+        # plt.imshow(image, cmap='gray')
+        # plt.scatter(120, base, color='r')
+        # plt.scatter(120, apex, color='g')
+        # plt.scatter(center,120, color='b')
+        # plt.subplot(122)
+        # plt.imshow(cropped_image, cmap='gray')
+        # plt.show()
+        # plt.close()
+
+        return cropped_image, cropped_dimensions, border
+
+    def _crop_cycle(self, cycle_list, dimensions_list):
+
+        cropped_cycles = []
+        cropped_dimensions = []
+        crp_dim = None
+        exec_net, plugin = self._get_exec_net()
+        for cycle_i, cycle in enumerate(cycle_list):
+            self.cycle_index = cycle_i
+            segmentations = self._segmentation_with_model(cycle, exec_net, plugin)
+
+            if segmentations is not None:
+                crp_cycle = np.zeros((256, 256, len(segmentations)))
+                border = None
+                for m, mask in enumerate(segmentations):
+                    mask = cv2.resize(np.array(mask), (256, 256))
+                    crp_im, crp_dim, border = self._crop_image(cycle[:, :, m], np.fliplr(mask),
+                                                               dimensions_list[cycle_i], border)
+                    crp_cycle[:, :, m] = crp_im
+
+                cropped_dimensions.append(crp_dim)
+                cropped_cycles.append(crp_cycle)  # list of cropped images in cycles
+
+        del exec_net
+        del plugin
+
+        return cropped_cycles, cropped_dimensions
+
+    def _save_cycle(self, cycle, ext=''):
+
+        out_dir = check_directory(os.path.join(self.output_path, 'bsh_examples'))
+        out_dir = check_directory(os.path.join(out_dir, '{}{}'.format(self.case_id, ext)))
+        for frame in range(cycle.shape[2]):
+            flipped_image = np.fliplr(cycle[:, :, frame])
+            gray_image = cv2.resize(np.array(flipped_image), (256, 256))
+            plt.imshow(gray_image, cmap='gray')
+            plt.savefig(os.path.join(out_dir, '{}_{}.png'.format(self.case_id, frame)))
+            plt.close()
+
+    def save_pickles_with_cropped_images(self):
+        pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
+        pickles.sort()
+        # df_bsh = list(pd.read_csv(os.path.join(self.source_path, 'bsh_sop.csv'), header=0))
+        # print(df_bsh)
+        df_pics = pd.read_excel('rel_cyc.xlsx', index_col=0, header=0)
+
+        for f, filename in enumerate(pickles):  # list of the pickle files in the folder
+            self.filename = filename
+            if 'AduHeart' in self.filename:
+                continue
+            try:
+                data = pickle.load(open(filename, 'rb'))
+            except pickle.UnpicklingError:
+                self._print_error_file_corrupted()
+                continue
+            except EOFError:
+                self._print_error_file_corrupted()
+                continue
+
+            for s_sopid in data.keys():  # list of Series SOP instance UIDs in a pickle file
+                print(s_sopid)
+                self.s_sopid = s_sopid
+
+                if self.s_sopid not in df_pics['sop'].values:
+                    print('not saved: {}'.format(self.s_sopid))
+                    break
+
+                cycle_movies = []
+                cycle_dimensions = []
+                for i, item in enumerate(data[s_sopid]):  # items of Series SOP instance UID entry
+                    if self._check_pickle_integrity(item, filename) and \
+                            item['RDCM_viewlabel'] == '4CH':  # and i < 4:
+
+                        self.case_id = item['patient_id']
+                        print('saving {}'.format(self.case_id))
+                        image_parameters = [item['params']['vector_angles'][0],
+                                            item['params']['vector_angles'][-1],
+                                            item['params']['depth_start'], item['params']['depth_end']]
+
+                        # Dimensions of the image
+                        height_mm_scale, width_mm_scale = self._get_width_and_height_scales(*image_parameters)
+
+                        # Entire acquisition of the image
+                        scanconv_movie = item['scanconv_movie']
+
+                        # Frames close to ECG markers of the cycles
+                        cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector']))
+                                        for trig_time in item['ecg_trigs']]
+
+                        # Separated movies of the cycles
+                        for frame in range(len((cycle_frames[:-1]))):
+                            # for frame in range(len((cycle_frames[-3:-2]))):  # testing
+                            cycle_movies.append(scanconv_movie[:, :,
+                                                cycle_frames[frame]:cycle_frames[frame + 1]])
+                            cycle_dimensions.append((width_mm_scale, height_mm_scale))
+
+                self._save_cycle(cycle_movies[df_pics.loc[self.case_id, 'cycle']])
+                cropped_cycle, cd = self._crop_cycle([cycle_movies[df_pics.loc[self.case_id, 'cycle']]],
+                                                     [cycle_dimensions[df_pics.loc[self.case_id, 'cycle']]])
+                self._save_cycle(cropped_cycle[0], ext='_cropped')
 
     def extract_curvature_indices(self):
         list_of_biomarkers = self.read_images_and_get_indices()
@@ -893,7 +998,8 @@ if __name__ == '__main__':
     output = os.path.join('c:/', 'Data', 'Pickles', '_Output')
     model = os.path.join('C:/', 'Code', 'curvature', 'model')
     pick = PickleReader(source, output, model)
-    pick.extract_curvature_indices()
+    pick.save_pickles_with_cropped_images()
+    # pick.extract_curvature_indices()
     # pick.get_biomakers()
     # ------------------------------------------------------------------------------------------------------------------
     # Cohort
