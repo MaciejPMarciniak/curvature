@@ -7,7 +7,7 @@ import pickle
 import cv2
 import shutil
 from itertools import combinations
-from scipy.interpolate import interp1d, Rbf
+from scipy.interpolate import interp1d, Rbf, UnivariateSpline
 from scipy.signal import savgol_filter
 from pykalman import KalmanFilter
 from openvino.inference_engine import IENetwork, IEPlugin
@@ -111,12 +111,28 @@ class Trace:
                 point_interpolated[trace, ::2] = rbf_x(points_target)
                 point_interpolated[trace, 1::2] = rbf_y(points_target)
 
+        # np.savetxt('original.csv', point_interpolated, delimiter=',')
         if temporal_smoothing:
+            print('point_interpolated.shape {}'.format(point_interpolated.shape))
             for point in range(point_interpolated.shape[1]):
 
-                point_interpolated[:, point] = savgol_filter(point_interpolated[:, point], 11, polyorder=5,
-                                                             mode='interp')
+                # print('point_interpolated[:, point]: {}'.format(point_interpolated[:, point]))
+                # plt.plot(point_interpolated[:, point], label='original')
+                single_trace = point_interpolated[:, point]
+                su = np.arange(0, float(len(single_trace)))
+                ft = UnivariateSpline(range(len(single_trace)), single_trace, s=len(single_trace)/100)
+                point_interpolated[:, point] = ft(su)
+                # point_interpolated[:, point] = savgol_filter(point_interpolated[:, point], 11, polyorder=5,
+                #                                              mode='interp')
+                # print('point_interpolated[:, point]: {}'.format(point_interpolated[:, point]))
+                # plt.plot(point_interpolated[:, point], label='savgol')
+                # plt.plot(spline[:, point], label='spline')
+                # plt.legend()
+                # plt.show()
+                # plt.close()
 
+            np.savetxt('smoothed.csv', point_interpolated, delimiter=',')
+            # print('point_interpolated.shape {}'.format(point_interpolated.shape))
         self.number_of_frames, self.number_of_points = point_interpolated.shape
         self.data = point_interpolated
 
@@ -124,7 +140,7 @@ class Trace:
         for frame in range(self.number_of_frames):
             xy = [[x, y] for x, y in zip(self.data[frame][::2], self.data[frame][1::2])]
             curva = Curvature(line=xy)
-            self.ventricle_curvature.append(curva.calculate_curvature(gap=0))
+            self.ventricle_curvature.append(curva.calculate_curvature(gap=1))
 
         self.ventricle_curvature = np.array(self.ventricle_curvature)
 
@@ -557,8 +573,8 @@ class PickleReader:
     def _plot_relevant_cycle(self, trace):
         traces_folder = check_directory(os.path.join(self.output_path, 'traces'))
         plot_tool = PlottingCurvature(None, traces_folder, ventricle=trace)
-        plot_tool.plot_all_frames(coloring_scheme='curvature')
         plot_tool.plot_heatmap()
+        plot_tool.plot_all_frames(coloring_scheme='curvature')
 
     def _find_and_save_ed(self, segmentations, cycle_id):
 
@@ -569,6 +585,7 @@ class PickleReader:
         ed_id = np.argmax(bp_counts)
         plt.imshow(segmentations[ed_id], cmap='gray')
         plt.savefig(os.path.join(self.output_path, 'EDs', '{}_{}.png'.format(self.case_id, cycle_id)))
+        plt.close()
 
     def _from_images_to_indices(self, cycles_list, dimensions_list, series_uid, plot_all=False):
         """
@@ -641,7 +658,7 @@ class PickleReader:
             if contour is not None:
                 trace_id = series_uid+'_'+str(contour_i)
                 trace = Trace(case_name=trace_id, contours=contour,
-                              interpolation_parameters=(None, True))
+                              interpolation_parameters=(None, False))
                 traces_dict[trace_id] = trace
                 np.savetxt(os.path.join(self.output_path,
                                         'Curvatures', '{}_{}.csv'.format(self.case_id, str(contour_i))),
@@ -655,8 +672,9 @@ class PickleReader:
         # ----- PLOTTING -------------------------------------------------------------------------------------
         # biomarkers_dir = check_directory(os.path.join(self.output_path, 'biomarkers'))
         # df_biomarkers.to_csv(os.path.join(biomarkers_dir, '{}.csv'.format(series_uid)))
-
-        if np.all(df_biomarkers['min'].nunique() == 1):
+        df_tmp = df_biomarkers[df_biomarkers['min'] != 0]
+        df_tmp = df_tmp[df_tmp['min'] != 1]
+        if df_tmp.empty:
             self._print_error_file_cycles()
             return df_biomarkers
         # Plotting: the trace with maximum curvature of the case
@@ -836,7 +854,7 @@ class PickleReader:
 
                         # Separated movies of the cycles
                         for frame in range(len((cycle_frames[:-1]))):
-                        # for frame in range(len((cycle_frames[-2:-1]))):  # testing
+                        # for frame in range(len((cycle_frames[-3:-2]))):  # testing
                             cycle_movies.append(scanconv_movie[:, :,
                                                 cycle_frames[frame]:cycle_frames[frame+1]])
                             cycle_dimensions.append((width_mm_scale, height_mm_scale))

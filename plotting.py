@@ -6,6 +6,7 @@ from matplotlib.lines import Line2D
 from matplotlib import cm
 import matplotlib as mpl
 import seaborn as sns
+from scipy.signal import savgol_filter
 
 
 class PlottingCurvature:
@@ -233,9 +234,12 @@ class PlottingCurvature:
             self.id = self.id.replace('.', '_')
         print(os.path.join(self.output_path, '{}_colour_by_{}.png'.format(self.id, ext)))
         fig.savefig(fname=os.path.join(self.output_path, '{}_colour_by_{}.png'.format(self.id, ext)))
+        plt.clf()
         plt.close()
 
     def plot_heatmap(self):
+        for point in range(self.curvature.shape[1]):
+            self.curvature[:, point] = savgol_filter(self.curvature[:, point], 7, polyorder=5, mode='interp')
 
         fig = sns.heatmap(self.curvature.T, vmax=0.125, vmin=-0.07, center=0, cmap='seismic')
         fig.set_title('Curvature heatmap')
@@ -247,8 +251,8 @@ class PlottingCurvature:
         plt.tick_params(axis=u'both', which=u'both', length=0)
         plt.axhline(y=20,  c='k', ls='-.', lw=1)
         plt.axhline(y=149, c='k', ls='-.', lw=1)
-        # plt.tight_layout()
-        plt.savefig(fname=os.path.join(self.output_path, 'Heatmap of {}'.format(self.id)))
+        plt.tight_layout()
+        plt.savefig(fname=os.path.join(self.output_path, 'Heatmap of {}.png'.format(self.id)))
         plt.close()
 
 # -----END-VentricleVisualization-----------------------------------------------------------------------------
