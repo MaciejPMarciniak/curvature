@@ -237,9 +237,11 @@ class PlottingCurvature:
         plt.clf()
         plt.close()
 
-    def plot_heatmap(self):
-        for point in range(self.curvature.shape[1]):
-            self.curvature[:, point] = savgol_filter(self.curvature[:, point], 7, polyorder=5, mode='interp')
+    def plot_heatmap(self, smooth=False):
+        if smooth:
+            for point in range(self.curvature.shape[1]):
+                self.curvature[:, point] = savgol_filter(self.curvature[:, point],
+                                                         7, polyorder=5, mode='interp')
 
         fig = sns.heatmap(self.curvature.T, vmax=0.125, vmin=-0.07, center=0, cmap='seismic')
         fig.set_title('Curvature heatmap')

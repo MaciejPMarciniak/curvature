@@ -8,7 +8,9 @@ from scipy.interpolate import Rbf
 from scipy.interpolate import UnivariateSpline
 import cv2
 import shutil
-
+from scipy.spatial.distance import cdist
+from scipy.optimize import linear_sum_assignment
+from curvature import Curvature
 
 def check_directory(directory):
     if not os.path.isdir(directory):
@@ -18,13 +20,15 @@ def check_directory(directory):
 
 class Contour:
 
-    def __init__(self, segmentations_path, output_path, segmentation_cycle=None, s_sopid=None, cycle_index=None):
+    def __init__(self, segmentations_path, output_path, segmentation_cycle=None, s_sopid=None,
+                 cycle_index=None, dimensions=None):
         self.segmentations_path = segmentations_path
         self.output_path = self._check_directory(output_path)
         self.segmentation_cycle = segmentation_cycle
         self.s_sopid = s_sopid
         self.cycle_index = cycle_index
         self.img_index = 0
+        self.dimensions = dimensions
         if self.segmentations_path is not None:
             self.seg_files = glob.glob(os.path.join(self.segmentations_path, '*.png'))
             self.seg_files.sort()
@@ -33,7 +37,7 @@ class Contour:
         self.epi_sorted_edge = list()
         self.all_cycle = None
         self.endo = True
-
+        self.smooth_res = 500
 
     @staticmethod
     def _check_directory(directory):
@@ -78,11 +82,11 @@ class Contour:
     @staticmethod
     def _make_grey_mask(mask):
 
-        if np.any(mask.size != (256, 256)):
-            print('segmented mask size: {}'.format(mask.shape))
-            mask = cv2.resize(np.array(mask), (256, 256))
+        mask = cv2.resize(np.array(mask), (256, 256))
         if mask.shape == (256, 256, 3):
             mask_gray = cv2.cvtColor(np.array(mask), cv2.COLOR_BGR2GRAY)
+        else:
+            mask_gray = mask
 
         # Remindex atrium
         mask_gray[mask_gray == 255] = 250
@@ -156,66 +160,148 @@ class Contour:
         edge.append(col_diffs_up)
         edge.append(col_diffs_down)
 
-
         return edge
 
     def _extract_edge_image(self):
         _lv_edge = np.zeros(self.current_gray_mask.shape, dtype=np.uint8)
         corrected_indices = self._correct_indices()
         for edge_pixels in corrected_indices:
-            _lv_edge[edge_pixels] = 255
+            _lv_edge[tuple(edge_pixels)] = 255
 
         return _lv_edge
 
-    def _fit_border_through_pixels(self, new_resolution):
+    def _fit_border_through_pixels(self, endo=True, new_resolution=500, edge=None):
 
-        se_x = np.array([x[0] for x in self.endo_sorted_edge])
-        se_y = np.array([y[1] for y in self.endo_sorted_edge])
+        if edge is not None:
+            border = edge
+        elif endo:
+            border = self.endo_sorted_edge
+        else:
+            border = self.epi_sorted_edge
+
+        se_x = np.array([x[0] for x in border])
+        se_y = np.array([y[1] for y in border])
         fx = UnivariateSpline(range(len(se_x)), se_x, s=int(len(se_x)/6))
         fy = UnivariateSpline(range(len(se_y)), se_y, s=int(len(se_y)/10))
         ss = np.linspace(0, len(se_x), new_resolution)
         fitted_x = fx(ss)
         fitted_y = fy(ss)
 
-        return [(x, y) for x, y in zip(fitted_x, fitted_y)]
-
-        # plt.scatter(range(len(se_x) - 20), se_x[10:-10])
+        # plt.subplot(121)
+        # plt.scatter(range(len(se_x)), se_x)
         # plt.plot(fitted_x, 'k', lw=4)
+        # plt.subplot(122)
+        # plt.scatter(range(len(se_y)), se_y)
+        # plt.plot(fitted_y, 'k', lw=4)
         # plt.show()
 
-        # se_x = self._expand_edge(np.array([x[0] for x in self.endo_sorted_edge]))
-        # se_y = self._expand_edge(np.array([y[1] for y in self.endo_sorted_edge]))
-        # rbf_fx = Rbf(np.arange(len(se_x)), se_x, smooth=500, function='cubic')
-        # rbf_fy = Rbf(np.arange(len(se_y)), se_y, smooth=500, function='cubic')
-        # rbf_x = rbf_fx(ss)[10:-10]
-        # rbf_y = rbf_fy(ss)[10:-10]
-        # plt.plot(rbf_x, 'g', lw=4)
-        # interp_se_x = self.smooth(se_x)[17:-17]
-        # interp_se_y = self.smooth(se_y)[17:-17]
-        # print('original: {}'.format(len(np.array([x[0] for x in self.endo_sorted_edge]))))
-        # print('transformed: {}'.format(len(se_x)))
-        # print('fitted: {}'.format(len(fitted_x)))
-        # plt.plot(interp_se_x, 'r', lw=3)
-
-        # print('len(fitted_x) {}'.format(len(fitted_x)))
-        # print(len(fitted_y))
-        # print('len(self.endo_sorted_edge): {}'.format(len(self.endo_sorted_edge)))
-        # plt.plot(fitted_x, fitted_y)
-        # plt.show()
+        return [(x, y) for x, y in zip(fitted_x, fitted_y)]
 
     def _lv_edges(self, seg_mask):
 
         self.current_gray_mask = self._make_grey_mask(seg_mask)
-        print(self.current_gray_mask.shape)
         self.mask_edge_value = 85 if self.endo else 170
         current_lv_edge = self._extract_edge_image()
         coord_lv = self._pair_coordinates(current_lv_edge)
         coord_lv_ordered = self._walk_on_edge(coord_lv)
+        coord_lv_ordered, _ = self._scale_controus(endo=coord_lv_ordered)
 
         if len(coord_lv_ordered) < 100:
             self._save_failed_qc_image('Not enough edge points!', True)
 
         return coord_lv_ordered
+
+    def _scale_controus(self, endo=None, epi=None):
+        # Rescaling to metric units (millimeters)
+        if endo is not None:
+            endo = [(x[0] * self.dimensions[0],
+                     x[1] * self.dimensions[1]) for x in endo]
+        if epi is not None:
+            epi = [(x[0] * self.dimensions[0],
+                    x[1] * self.dimensions[1]) for x in epi]
+        return endo, epi
+
+    def _calculate_wt(self):
+
+        endo_wt, epi_wt = self._scale_controus(*self._calculate_wt_borders(500))
+
+        endo_wt = endo_wt[:int(0.4 * len(endo_wt))]
+        epi_wt = epi_wt[:int(0.4 * len(epi_wt))]
+        cost_matrix = cdist(endo_wt, epi_wt)
+        _, result_col = linear_sum_assignment(cost_matrix)
+
+        thickness = np.zeros(len(endo_wt))
+
+        for i in range(len(endo_wt)):
+            endo_point = endo_wt[i]
+            epi_point = epi_wt[result_col[i]]
+            thickness[i] = np.linalg.norm(np.array(endo_point) - np.array(epi_point))
+
+        basal_thicknesses = thickness[:83]
+        mid_thicknesses = thickness[83:180]
+
+        max_basal_thickness = np.max(basal_thicknesses)
+        mean_mid_thickness = np.mean(mid_thicknesses)
+
+        return max_basal_thickness, mean_mid_thickness
+
+    def _retrieve_epicardium_for_wt(self, endo):
+        len_epi = len(self.epi_sorted_edge)
+        left_epi = self.epi_sorted_edge[:int(len_epi / 2)]
+        right_epi = self.epi_sorted_edge[int(len_epi / 2):]
+        left_epi_cropped = [epi_point for epi_point in left_epi if epi_point[1] >= endo[0][1]]
+        right_epi_cropped = [epi_point for epi_point in right_epi if epi_point[1] >= endo[-1][1]]
+        return left_epi_cropped + right_epi_cropped
+
+    def _calculate_wt_borders(self, smooth_res=0):
+
+        # It works only if the myocardial wall is parallel to y axis, otherwise there is bias.
+        # epi_wt = self._retrieve_epicardium_for_wt(endo_wt)
+        epi_wt = self.epi_sorted_edge[:]
+        endo_wt = self.endo_sorted_edge[:]
+        if smooth_res:
+            epi_res = int(smooth_res * len(epi_wt) / len(endo_wt))
+            # epi_res = smooth_res
+            endo_wt = self._fit_border_through_pixels(new_resolution=smooth_res, edge=endo_wt)
+            epi_wt = self._fit_border_through_pixels(endo=False, new_resolution=epi_res, edge=epi_wt)
+
+        return endo_wt, epi_wt
+
+    def plot_wt(self, smooth_res=0):
+
+        endo_wt, epi_wt = self._calculate_wt_borders(smooth_res)
+
+        endo_wt = endo_wt[:int(0.4*len(endo_wt))]
+        epi_wt = epi_wt[:int(0.35 * len(epi_wt))]
+        cost_matrix = cdist(endo_wt, epi_wt)
+        _, result_col = linear_sum_assignment(cost_matrix)
+
+        plt.imshow(self.current_gray_mask, cmap='gray')
+        se_x = np.array([x[0] for x in endo_wt])
+        se_y = np.array([y[1] for y in endo_wt])
+        plt.plot(se_x, -se_y, color='r')
+        se_x = np.array([x[0] for x in epi_wt])
+        se_y = np.array([y[1] for y in epi_wt])
+        plt.plot(se_x, -se_y, color='b')
+        for i in range(len(endo_wt)):
+            if i % 5 == 0:
+                endo_point = endo_wt[i]
+                epi_point = epi_wt[result_col[i]]
+                plt.plot([endo_point[0], epi_point[0]], [-endo_point[1], -epi_point[1]], 'y')
+
+        # for i, endo_point in enumerate(endo_wt):
+        #     if i % 10 == 0:
+        #         if i < 190:
+        #             epi_point = epi_wt[i]
+        #             plt.plot([endo_point[0], epi_point[0]], [-endo_point[1], -epi_point[1]], 'y')
+        # for i, endo_point in enumerate(endo_wt[::-1]):
+        #     print(i)
+        #     if i % 10 == 1:
+        #         if i < 210:
+        #             epi_point = epi_wt[-i]
+        #             print(epi_point)
+        #             plt.plot([endo_point[0], epi_point[0]], [-endo_point[1], -epi_point[1]], 'y')
+        plt.show()
 
     def lv_endo_edges(self):
 
@@ -227,8 +313,11 @@ class Contour:
                 self.endo_sorted_edge = self._lv_edges(seg_mask)
                 self.endo = False
                 self.epi_sorted_edge = self._lv_edges(seg_mask)
-                #TODO: Pick the same y and see what happens
-                #TODO: The smoothing should accept contour, not accept endo edge
+                self.smooth_res = 500
+                self.plot_wt(500)
+                bwt, mwt = self._calculate_wt()
+                print(bwt, mwt)
+                exit()
                 plt.imshow(self.current_gray_mask)
                 xc = np.array([x[0] for x in self.endo_sorted_edge])
                 yc = -np.array([y[1] for y in self.endo_sorted_edge])
@@ -246,18 +335,20 @@ class Contour:
             print('length of the cycle: {}'.format(len(self.segmentation_cycle)))
             cycle_coords = []
             self.endo_sorted_edge = self._lv_edges(self.segmentation_cycle[0])
+            self.smooth_res = 500
             prev_cont = self.endo_sorted_edge
 
             failed = 0
             for seg_img_i, seg_img in enumerate(self.segmentation_cycle):
                 self.endo_sorted_edge = self._lv_edges(seg_img)
                 self.img_index = seg_img_i
+
                 if self._check_contour_quality(np.array(seg_img), prev_cont):
-                    cycle_coords.append(self._fit_border_through_pixels(500))
+                    cycle_coords.append(self._fit_border_through_pixels(new_resolution=500))
                     prev_cont = self.endo_sorted_edge
-                    # se_x = np.array([x[0] for x in self._fit_border_through_pixels(500)])
-                    # se_y = np.array([y[1] for y in self._fit_border_through_pixels(500)])
-                    # plt.imshow(seg_img)
+                    # se_x = np.array([x[0] for x in cycle_coords[seg_img_i]])
+                    # se_y = np.array([y[1] for y in cycle_coords[seg_img_i]])
+                    # # plt.imshow(seg_img)
                     # plt.scatter(se_x, -se_y)
                     # plt.show()
                 else:
@@ -272,7 +363,7 @@ class Contour:
 
         values, counts = np.unique(mask, return_counts=True)  # returned array is sorted
 
-        tmp_smooth = self._fit_border_through_pixels(len(self.endo_sorted_edge))
+        tmp_smooth = self._fit_border_through_pixels(True, len(self.endo_sorted_edge))
         # se_x = np.array([x[0] for x in self.endo_sorted_edge])
         # se_y = np.array([y[1] for y in self.endo_sorted_edge])
         # se_x2 = np.array([x[0] for x in prev_cont])
@@ -286,7 +377,11 @@ class Contour:
 
         positions = np.where(mask == values[1])
         max_bp_y, max_bp_x = [np.max(p) for p in positions]
+        max_bp_y *= self.dimensions[1]  # scaling for compatibility with contours
+        max_bp_x *= self.dimensions[0]
         min_bp_y, min_bp_x = [np.min(p) for p in positions]
+        min_bp_y *= self.dimensions[1]
+        min_bp_x *= self.dimensions[0]
         max_cont_y = np.max([-c[1] for c in tmp_smooth])
         min_cont_y = np.min([-c[1] for c in tmp_smooth])
         max_cont_x = np.max([c[0] for c in tmp_smooth])
@@ -294,37 +389,42 @@ class Contour:
 
         percent_prev_contour_diff = np.abs(len(self.endo_sorted_edge) - len(prev_cont)) / len(prev_cont)
         if percent_prev_contour_diff > 0.25:  # 25% of previous contour
-            print(percent_prev_contour_diff)
+            print('percent_prev_contour_diff: {}'.format(percent_prev_contour_diff))
             # self._save_failed_qc_image('percent_prev_cont {}'.format(percent_prev_contour_diff), mask)
             return False
 
         if np.linalg.norm(np.array(tmp_smooth[0]) - np.array(tmp_smooth[-1])) < 10:
-            print(tmp_smooth)
+            print('tmp_smooth {}'.format(tmp_smooth))
             print(np.linalg.norm(np.array(tmp_smooth) - np.array(tmp_smooth)))
             # self._save_failed_qc_image('Contour covering entire bp', mask)
             return False
 
         if max_bp_y < max_cont_y - 5:
+            print('Contour over bp')
             # self._save_failed_qc_image('Contour over bp', mask)
             return False
 
         diff_max_y = np.abs(max_bp_y - max_cont_y)
         if diff_max_y > 10:
+            print('Diff_max_bp_y_max_cont_y {}'.format(diff_max_y))
             # self._save_failed_qc_image('Diff_max_bp_y_max_cont_y {}'.format(diff_max_y), mask)
             return False
 
         diff_min_y = np.abs(min_bp_y - min_cont_y)
         if diff_min_y > 15:
+            print('Diff_min_bp_y_min_cont_y {}'.format(diff_min_y))
             # self._save_failed_qc_image('Diff_min_bp_y_min_cont_y {}'.format(diff_min_y), mask)
             return False
 
         diff_max_x = np.abs(max_bp_x - max_cont_x)
         if diff_max_x > 15:
+            print('Diff_max_bp_x_max_cont_x {}'.format(diff_max_x))
             # self._save_failed_qc_image('Diff_max_bp_x_max_cont_x {}'.format(diff_max_x), mask)
             return False
 
         diff_min_x = np.abs(min_bp_x - min_cont_x)
         if diff_min_x > 15:
+            print('Diff_min_bp_x_min_cont_x {}'.format(diff_min_x))
             # self._save_failed_qc_image('Diff_min_bp_x_min_cont_x {}'.format(diff_min_x), mask)
             return False
 
@@ -367,5 +467,5 @@ if __name__ == '__main__':
     # parser.add_argument('-o', '--output_path', help='Directory where output will be stored', required=True)
     # args = parser.parse_args()
 
-    cont = Contour(os.getcwd(), os.getcwd())
+    cont = Contour(os.getcwd(), os.getcwd(), dimensions=(1, 1))
     cont.lv_endo_edges()

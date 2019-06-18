@@ -73,7 +73,6 @@ class Trace:
 
     @staticmethod
     def _plane_area(x, y):
-        # TODO: replace with an algorithm which takes into account the fact that some LVs are not convex
         return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
     def _find_ed_and_es_frame(self):
@@ -102,37 +101,29 @@ class Trace:
                 points_target = np.linspace(0, len(self.data[trace]) - 1, trace_points_n)
 
                 # Radial basis function interpolation
-                # 'quintic': r**5 where r is the distance from the next point
-                # smoothing should be adjusted to the number of original points, but there is no clear
-                # criterion
+                # 'quintic': r**5 where r is the distance from the next poiny
                 rbf_x = Rbf(positions, [x[0] for x in self.data[trace]], smooth=50, function='quintic')
                 rbf_y = Rbf(positions, [y[1] for y in self.data[trace]], smooth=50, function='quintic')
 
                 point_interpolated[trace, ::2] = rbf_x(points_target)
                 point_interpolated[trace, 1::2] = rbf_y(points_target)
 
-        # np.savetxt('original.csv', point_interpolated, delimiter=',')
         if temporal_smoothing:
-            print('point_interpolated.shape {}'.format(point_interpolated.shape))
             for point in range(point_interpolated.shape[1]):
 
-                # print('point_interpolated[:, point]: {}'.format(point_interpolated[:, point]))
                 # plt.plot(point_interpolated[:, point], label='original')
-                single_trace = point_interpolated[:, point]
-                su = np.arange(0, float(len(single_trace)))
-                ft = UnivariateSpline(range(len(single_trace)), single_trace, s=len(single_trace)/100)
-                point_interpolated[:, point] = ft(su)
-                # point_interpolated[:, point] = savgol_filter(point_interpolated[:, point], 11, polyorder=5,
-                #                                              mode='interp')
-                # print('point_interpolated[:, point]: {}'.format(point_interpolated[:, point]))
+                # single_trace = point_interpolated[:, point]
+                # su = np.arange(0, float(len(single_trace)))
+                # ft = UnivariateSpline(range(len(single_trace)), single_trace, s=len(single_trace)/10)
+                # point_interpolated[:, point] = ft(su)
+                point_interpolated[:, point] = savgol_filter(point_interpolated[:, point], 11,
+                                                             polyorder=5, mode='interp')
                 # plt.plot(point_interpolated[:, point], label='savgol')
                 # plt.plot(spline[:, point], label='spline')
                 # plt.legend()
                 # plt.show()
                 # plt.close()
 
-            np.savetxt('smoothed.csv', point_interpolated, delimiter=',')
-            # print('point_interpolated.shape {}'.format(point_interpolated.shape))
         self.number_of_frames, self.number_of_points = point_interpolated.shape
         self.data = point_interpolated
 
@@ -484,7 +475,8 @@ class PickleReader:
         distances = (np.abs(min_bpx - min_myox),  # distances[0]
                      np.abs(min_bpy - min_myoy),  # distances[1]
                      np.abs(max_bpx - max_myox),  # distances[2]
-                     np.abs(max_bpy - max_myoy))  # distances[3]
+                     np.abs(max_bpy - max_myoy),  # distances[3]
+                     np.abs(max_myoy - min_aty))  # distances[4]
 
         if distances[0] > 35:
             # self._save_failed_qc_image('delta_left_x_ {}'.format(distances[0]), mask)
@@ -498,11 +490,14 @@ class PickleReader:
         if distances[3] > 15:
             # self._save_failed_qc_image('delta_higher_y_ {}'.format(distances[3]), mask)
             return False
+        if distances[4] > 20:
+            # self._save_failed_qc_image('delta_higher_y_ {}'.format(distances[3]), mask)
+            return False
 
         bp_mask = np.where(mask == values[1])
 
         bp_above_atrium = np.sum(bp_mask[0] > min_aty)/len(bp_mask[0])  # Blood pool above the atrium mask
-        if bp_above_atrium > 0.08:
+        if bp_above_atrium > 0.07:
             # self._save_failed_qc_image('lowest_atrium_pixel_and_ratio {}'.format(bp_above_atrium), mask)
             return False
 
@@ -517,6 +512,7 @@ class PickleReader:
         cycle_segmentations = []
 
         failed = 0
+        failed_ids = []
         for i in range(cycle_images.shape[2]):
             self.img_index = i
             img = cycle_images[:, :, i]
@@ -538,15 +534,16 @@ class PickleReader:
                 if self._check_mask_quality(np.array(image_mask)):
                     cycle_segmentations.append(image_mask)
                 else:
-                    failed_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
-                                                 self.s_sopid.replace('.', '_'), str(self.cycle_index)))
-                    img_from_array.save(os.path.join(failed_dir, 'failed_{}.png'.format(self.img_index)))
+                    # failed_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
+                    #                                           self.s_sopid.replace('.', '_'), str(self.cycle_index)))
+                    # img_from_array.save(os.path.join(failed_dir, 'failed_{}.png'.format(self.img_index)))
                     failed += 1
+                    failed_ids.append(i)
 
         if not failed / cycle_images.shape[2] > 0.35:
-            return cycle_segmentations
+            return cycle_segmentations, failed_ids
         else:
-            return None
+            return None, None
 
     def _plot_relevant_cycle(self, trace):
         traces_folder = check_directory(os.path.join(self.output_path, 'traces'))
@@ -573,7 +570,6 @@ class PickleReader:
         positions of the trace.
         3. Trace, which returns the data frame with all recorded biomarkers from the provided cycles.
         :param cycles_list:
-        :param series_uid:
         :return:
         """
 
@@ -587,7 +583,7 @@ class PickleReader:
         for cycle_i, cycle in enumerate(cycles_list):
             print('cycle_length: {}'.format(cycle.shape[2]))
             self.cycle_index = cycle_i
-            segmentations = self._segmentation_with_model(cycle, exec_net, plugin)
+            segmentations, _ = self._segmentation_with_model(cycle, exec_net, plugin)
             if segmentations is not None:
                 self._find_and_save_ed(segmentations, cycle_i)
                 df.loc['{}_{}'.format(self.case_id, cycle_i)] = dimensions_list[cycle_i]
@@ -609,15 +605,11 @@ class PickleReader:
             if segment is not None:
                 contours = Contour(segmentations_path=None, output_path=self.output_path,
                                    segmentation_cycle=segment, s_sopid=self.s_sopid,
-                                   cycle_index=self.cycle_index)
+                                   cycle_index=self.cycle_index, dimensions=dimensions_list[segment_i])
                 contours.lv_endo_edges()
 
                 if contours.all_cycle is not None and \
                         len(contours.all_cycle)/cycles_list[self.cycle_index].shape[2] > 0.7:
-                    for c, cont in enumerate(contours.all_cycle):  # Rescaling to metric units (millimeters)
-                        cont = [(x[0] * dimensions_list[segment_i][0],
-                                 x[1] * dimensions_list[segment_i][1]) for x in cont]
-                        contours.all_cycle[c] = cont
                     contours_list.append(contours.all_cycle)  # list of contours of single cycles
                 else:
                     print('Cycle failed on contouring quality check')
@@ -786,8 +778,8 @@ class PickleReader:
     def read_images_and_get_indices(self, get_ed=False):
         pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
         pickles.sort()
-        df_bsh = list(pd.read_csv(os.path.join(self.source_path, 'bsh_sop.csv'), header=0))
-        print(df_bsh)
+        # df_bsh = list(pd.read_csv(os.path.join(self.source_path, 'bsh_sop.csv'), header=0))
+        # print(df_bsh)
         df_all_biomarkers = pd.DataFrame(columns=['min', 'max', 'avg_min_basal_curv', 'avg_avg_basal_curv',
                                                   'min_delta', 'max_delta', 'amplitude_at_t',
                                                   'Series_SOP', 'Patient_ID'])
@@ -804,53 +796,54 @@ class PickleReader:
                 continue
 
             print(filename)
-            for s_sopid in data.keys():  # list of Series SOP instance UIDs in a pickle file
-                print(s_sopid)
-                self.s_sopid = s_sopid
+            self.s_sopid = list(data.keys())[0]  # list of Series SOP instance UIDs in a pickle file
 
-                cycle_movies = []
-                cycle_dimensions = []
-                for i, item in enumerate(data[s_sopid]):  # items of Series SOP instance UID entry
-                    if self._check_pickle_integrity(item, filename) and \
-                            item['RDCM_viewlabel'] == '4CH':  # and i < 4:
+            cycle_movies = []
+            cycle_dimensions = []
+            for i, item in enumerate(data[self.s_sopid]):  # items of Series SOP instance UID entry
+                if self._check_pickle_integrity(item, filename) and \
+                        item['RDCM_viewlabel'] == '4CH' and i < 4:
 
-                        self.case_id = item['patient_id']
-                        image_parameters = [item['params']['vector_angles'][0],
-                                            item['params']['vector_angles'][-1],
-                                            item['params']['depth_start'], item['params']['depth_end']]
+                    self.case_id = item['patient_id']
 
-                        # Dimensions of the image
-                        height_mm_scale, width_mm_scale = self._get_width_and_height_scales(*image_parameters)
+                    image_parameters = [item['params']['vector_angles'][0],
+                                        item['params']['vector_angles'][-1],
+                                        item['params']['depth_start'], item['params']['depth_end']]
 
-                        # Entire acquisition of the image
-                        scanconv_movie = item['scanconv_movie']
+                    # Dimensions of the image
+                    height_mm_scale, width_mm_scale = self._get_width_and_height_scales(*image_parameters)
 
-                        # Frames close to ECG markers of the cycles
-                        cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector']))
-                                        for trig_time in item['ecg_trigs']]
+                    # Entire acquisition of the image
+                    scanconv_movie = item['scanconv_movie']
 
-                        # Separated movies of the cycles
-                        for frame in range(len((cycle_frames[:-1]))):
-                            # for frame in range(len((cycle_frames[-3:-2]))):  # testing
-                            cycle_movies.append(scanconv_movie[:, :,
-                                                cycle_frames[frame]:cycle_frames[frame+1]])
-                            cycle_dimensions.append((width_mm_scale, height_mm_scale))
+                    # Frames close to ECG markers of the cycles
+                    cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector']))
+                                    for trig_time in item['ecg_trigs']]
 
-                        print('len time vector: {}'.format(len(item['time_vector'])))
-                        print('cycle_frames: {}'.format(cycle_frames))
-                        print('Scaling factors: width - {}, height - {}'.format(width_mm_scale, height_mm_scale))
-                print('cycle_movies: {}'.format(len(cycle_movies)))
+                    # Separated movies of the cycles
+                    for frame in range(len((cycle_frames[:-1]))):
+                        # for frame in range(len((cycle_frames[-3:-2]))):  # testing
+                        cycle_movies.append(scanconv_movie[:, :,
+                                            cycle_frames[frame]:cycle_frames[frame+1]])
+                        cycle_dimensions.append((width_mm_scale, height_mm_scale))
 
-                if len(cycle_movies) > 0:
-                    tmp_biomarkers = self._from_images_to_indices(cycle_movies, cycle_dimensions,
-                                                                  plot_all=False)
-                    tmp_biomarkers.loc[:, 'Series_SOP'] = self.s_sopid
-                    tmp_biomarkers.loc[:, 'Patient_ID'] = self.case_id
-                    df_all_biomarkers = df_all_biomarkers.append(tmp_biomarkers, sort=False)
-                    df_all_biomarkers.to_csv(os.path.join(self.output_path, 'biomarkers',
-                                                          '{}.csv'.format(self.case_id)))
-                else:
-                    self._print_error_file_corrupted()
+                    print('len time vector: {}'.format(len(item['time_vector'])))
+                    print('cycle_frames: {}'.format(cycle_frames))
+                    print('Scaling factors: width - {}, height - {}'.format(width_mm_scale, height_mm_scale))
+
+            print('cycle_movies: {}'.format(len(cycle_movies)))
+
+            if len(cycle_movies) > 0:
+                tmp_biomarkers = self._from_images_to_indices(cycle_movies, cycle_dimensions,
+                                                              plot_all=False)
+                tmp_biomarkers.loc[:, 'Series_SOP'] = self.s_sopid
+                tmp_biomarkers.loc[:, 'Patient_ID'] = self.case_id
+                df_all_biomarkers = df_all_biomarkers.append(tmp_biomarkers, sort=False)
+                df_all_biomarkers.to_csv(os.path.join(self.output_path, 'biomarkers',
+                                                      '{}.csv'.format(self.case_id)))
+            else:
+                self._print_error_file_corrupted()
+
         return df_all_biomarkers
 
     @staticmethod
@@ -891,7 +884,7 @@ class PickleReader:
         exec_net, plugin = self._get_exec_net()
         for cycle_i, cycle in enumerate(cycle_list):
             self.cycle_index = cycle_i
-            segmentations = self._segmentation_with_model(cycle, exec_net, plugin)
+            segmentations, _ = self._segmentation_with_model(cycle, exec_net, plugin)
 
             if segmentations is not None:
                 crp_cycle = np.zeros((256, 256, len(segmentations)))
@@ -910,28 +903,69 @@ class PickleReader:
 
         return cropped_cycles, cropped_dimensions
 
-    def _save_cycle(self, cycle, ext=''):
+    def _get_segmentations(self, cycle_list, dimensions_list):
 
-        out_dir = check_directory(os.path.join(self.output_path, 'bsh_examples'))
-        out_dir = check_directory(os.path.join(out_dir, '{}{}'.format(self.case_id, ext)))
-        for frame in range(cycle.shape[2]):
-            flipped_image = np.fliplr(cycle[:, :, frame])
-            gray_image = cv2.resize(np.array(flipped_image), (256, 256))
-            plt.imshow(gray_image, cmap='gray')
-            plt.savefig(os.path.join(out_dir, '{}_{}.png'.format(self.case_id, frame)))
-            plt.close()
+        segmented_cycles = []
+        segmented_dimensions = []
+        failed_frames = []
+        exec_net, plugin = self._get_exec_net()
+        for cycle_i, cycle in enumerate(cycle_list):
+            self.cycle_index = cycle_i
+            segmentations, failed = self._segmentation_with_model(cycle, exec_net, plugin)
 
-    def save_pickles_with_cropped_images(self):
+            if segmentations is not None:
+                segmented_cycles.append(segmentations)
+                segmented_dimensions.append(dimensions_list[cycle_i])  # list of cropped images in cycles
+                failed_frames.append(failed)
+            else:
+                segmented_cycles.append([-1])
+                segmented_dimensions.append([-1])  # list of cropped images in cycles
+                failed_frames.append([-1])
+
+        del exec_net
+        del plugin
+
+        return segmented_cycles, segmented_dimensions, failed_frames
+
+    def _save_cycles(self, cycles, failed_frames=(None), resize=True, sequence='', subject='', kind='bsh_examples'):
+
+        out_dir = check_directory(os.path.join(self.output_path, kind))
+        out_dir = check_directory(os.path.join(out_dir, '{}'.format(subject)))
+
+        for ci, cycle in enumerate(cycles):
+            print(ci)
+            if len(cycle) == 1:
+                print('Single image {}'.format(self.filename))
+                continue
+            cycle_out_dir = check_directory(os.path.join(out_dir, 'Sequence_{} {}'.format(sequence, ci)))
+            if isinstance(cycle, list):
+                # for ffi in failed_frames[ci]:
+                #     cycle.insert(ffi, np.zeros((256, 256)))
+                for frame in range(len(cycle)):
+                    # if frame in failed_frames[ci]:
+                    #     continue
+                    image = np.array(cycle[frame])
+                    cv2.imwrite(os.path.join(cycle_out_dir, 'US_2D_{}.png'.format(frame)), image)
+            else:
+                for frame in range(cycle.shape[2]):
+                    # if frame in failed_frames[ci]:
+                    #     continue
+                    image = np.fliplr(cycle[:, :, frame])
+                    if resize:
+                        image = cv2.resize(np.array(image), (1024, 1024), interpolation=cv2.INTER_LINEAR_EXACT)
+                    cv2.imwrite(os.path.join(cycle_out_dir, 'US_2D_{}.png'.format(frame)), image)
+
+    def save_relevant_images(self):
         pickles = glob.glob(os.path.join(self.source_path, '*.pck'))
         pickles.sort()
-        # df_bsh = list(pd.read_csv(os.path.join(self.source_path, 'bsh_sop.csv'), header=0))
-        # print(df_bsh)
-        df_pics = pd.read_excel('rel_cyc.xlsx', index_col=0, header=0)
-
+        # df_pics = pd.read_excel('rel_cyc.xlsx', index_col=0, header=0)
+        s = 0
         for f, filename in enumerate(pickles):  # list of the pickle files in the folder
-            self.filename = filename
-            if 'AduHeart' in self.filename:
-                continue
+            self.filename = filename.split('\\')[-1].split('.')[0]
+            print(self.filename)
+            print(f)
+            # if 'AduHeart' in self.filename:
+            #     continue
             try:
                 data = pickle.load(open(filename, 'rb'))
             except pickle.UnpicklingError:
@@ -945,43 +979,50 @@ class PickleReader:
                 print(s_sopid)
                 self.s_sopid = s_sopid
 
-                if self.s_sopid not in df_pics['sop'].values:
-                    print('not saved: {}'.format(self.s_sopid))
-                    break
+                # if self.s_sopid not in df_pics['sop'].values:
+                #     print('not saved: {}'.format(self.s_sopid))
+                #     break
 
-                cycle_movies = []
-                cycle_dimensions = []
                 for i, item in enumerate(data[s_sopid]):  # items of Series SOP instance UID entry
-                    if self._check_pickle_integrity(item, filename) and \
-                            item['RDCM_viewlabel'] == '4CH':  # and i < 4:
+                    cycle_movies = []
+                    cycle_dimensions = []
+                    sequence_list = []
+                    if self._check_pickle_integrity(item, filename):  # and \
+                            # item['RDCM_viewlabel'] == '4CH':  # and i < 4:
 
+                        sequence_list.append(i)
                         self.case_id = item['patient_id']
                         print('saving {}'.format(self.case_id))
-                        image_parameters = [item['params']['vector_angles'][0],
-                                            item['params']['vector_angles'][-1],
-                                            item['params']['depth_start'], item['params']['depth_end']]
-
+                        # image_parameters = [item['params']['vector_angles'][0],
+                        #                     item['params']['vector_angles'][-1],
+                        #                     item['params']['depth_start'], item['params']['depth_end']]
+                        s+=1
+                        print(s)
                         # Dimensions of the image
-                        height_mm_scale, width_mm_scale = self._get_width_and_height_scales(*image_parameters)
+                        # height_mm_scale, width_mm_scale = self._get_width_and_height_scales(*image_parameters)
 
                         # Entire acquisition of the image
                         scanconv_movie = item['scanconv_movie']
 
                         # Frames close to ECG markers of the cycles
-                        cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector']))
-                                        for trig_time in item['ecg_trigs']]
-
+                        # cycle_frames = [np.argmin(np.abs(trig_time - item['time_vector']))
+                        #                 for trig_time in item['ecg_trigs']]
+                        cycle_movies.append(scanconv_movie)
                         # Separated movies of the cycles
-                        for frame in range(len((cycle_frames[:-1]))):
+                        # for frame in range(len((cycle_frames[:-1]))):
                             # for frame in range(len((cycle_frames[-3:-2]))):  # testing
-                            cycle_movies.append(scanconv_movie[:, :,
-                                                cycle_frames[frame]:cycle_frames[frame + 1]])
-                            cycle_dimensions.append((width_mm_scale, height_mm_scale))
-
-                self._save_cycle(cycle_movies[df_pics.loc[self.case_id, 'cycle']])
-                cropped_cycle, cd = self._crop_cycle([cycle_movies[df_pics.loc[self.case_id, 'cycle']]],
-                                                     [cycle_dimensions[df_pics.loc[self.case_id, 'cycle']]])
-                self._save_cycle(cropped_cycle[0], ext='_cropped')
+                            # cycle_movies.append(scanconv_movie[:, :,
+                            #                     cycle_frames[frame]:cycle_frames[frame + 1]])
+                            # cycle_dimensions.append((width_mm_scale, height_mm_scale))
+                        # print(len(cycle_movies))
+                        # segmentations, seg_cd, seg_failed = self._get_segmentations(cycle_movies,
+                        #                                                             cycle_dimensions)
+                        # print(len(segmentations))
+                        # print(len(seg_failed))
+                        self._save_cycles(cycle_movies, failed_frames=(), subject=self.filename,
+                                          sequence=str(sequence_list[-1]), resize=True, kind='Images')
+                        # self._save_cycles(segmentations, failed_frames=seg_failed, subject=self.filename,
+                        #                   sequence=str(sequence_list[-1]), resize=False, kind='Segmentations')
 
     def extract_curvature_indices(self):
         list_of_biomarkers = self.read_images_and_get_indices()
@@ -994,11 +1035,12 @@ class PickleReader:
 if __name__ == '__main__':
 
     # Pickles
-    source = os.path.join('C:/', 'Data', 'Pickles')
-    output = os.path.join('c:/', 'Data', 'Pickles', '_Output')
+    source = os.path.join('C:/', 'Data', 'PaduaSB')
+    output = os.path.join('F:/', 'export')
     model = os.path.join('C:/', 'Code', 'curvature', 'model')
     pick = PickleReader(source, output, model)
-    pick.save_pickles_with_cropped_images()
+    pick.save_relevant_images()
+
     # pick.extract_curvature_indices()
     # pick.get_biomakers()
     # ------------------------------------------------------------------------------------------------------------------
