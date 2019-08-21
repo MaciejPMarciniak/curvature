@@ -23,5 +23,9 @@
 # Virtual environment
 /venv
 
+# Private
+/model
+one_script.py
+
 __pycache__/
 

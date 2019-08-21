@@ -6,6 +6,7 @@ from matplotlib.lines import Line2D
 from matplotlib import cm
 import matplotlib as mpl
 import seaborn as sns
+from scipy.signal import savgol_filter
 
 
 class PlottingCurvature:
@@ -19,10 +20,11 @@ class PlottingCurvature:
         self.id = ventricle.case_filename
         self.number_of_frames = ventricle.number_of_frames
         self.curvature = ventricle.ventricle_curvature
-        self.mean_curvature = ventricle.mean_curvature_over_time
         self.c_normalized = ventricle.vc_normalized
-        self.mc_normalized = ventricle.mc_normalized
         self.es_frame, self.ed_frame = ventricle.es_frame, ventricle.ed_frame
+        self.mean_curvature = ventricle.get_mean_curvature_over_time()
+
+        self.mc_normalized = ventricle.get_normalized_curvature(self.mean_curvature)
         self.es_apex = self.data[self.es_frame, ventricle.apex*2:ventricle.apex*2+2]
         self.ed_apex = self.data[self.ed_frame, ventricle.apex*2:ventricle.apex*2+2]
         self.ed_apex_id = ventricle.apex
@@ -138,18 +140,16 @@ class PlottingCurvature:
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
 
         ax0.set_title('LV trace, full cycle'.format(self.id))
-        ax0.set_ylim(-85, 5)
-
-        ax0.set_xlim(-30, 55)
+        ax0.set_ylim(-100, 20)
+        ax0.set_xlim(-40, 40)
         ax0.set_xlabel('Short axis $[mm]$')
         ax0.set_ylabel('Long axis $[mm]$')
 
         ax1.set_title('Geometric point-to-point curvature')
         ax1.axhline(y=0, c='k', ls='-.', lw=1)
-        ax1.axhline(y=-0.040, c='k', ls='-.', lw=1)
-        # ax1.axvline(x=25, c='k', ls='-.', lw=1)
-        # ax1.axvline(x=200, c='k', ls='-.', lw=1)
-        ax1.set_ylim(-0.07, 0.14)
+        ax1.axvline(x=20, c='k', ls='-.', lw=1)
+        ax1.axvline(x=150, c='k', ls='-.', lw=1)
+        ax1.set_ylim(-0.15, 0.30)
 
         # ax1.vlines(self.ed_apex_id+1, 0, max(self.curvature[:, self.ed_apex_id]), color='k', linestyles='-.', lw=1)
         #  Added 1 to ed_apex_id because the plot is moved by one (due to lack of curvature at end points)
@@ -158,13 +158,13 @@ class PlottingCurvature:
 
         if coloring_scheme == 'curvature':
             xx, yy, _ = self._get_translated_element(self.ed_frame, self.ed_apex)
-            yy *= -1
+            # yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[self.ed_frame])
             ax0.plot(xx, yy, 'k--', lw=3)
             ax1.plot(curv, '--', c='black', lw=2)
 
             xx, yy, _ = self._get_translated_element(self.es_frame, self.ed_apex)
-            yy *= -1
+            # yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[self.es_frame])
             ax0.plot(xx, yy, 'k:', lw=3)
             ax1.plot(curv, ':', c='black', lw=2)
@@ -192,13 +192,13 @@ class PlottingCurvature:
         for frame_number in range(self.number_of_frames):
 
             xx, yy, _ = self._get_translated_element(frame_number, self.ed_apex)
-            yy *= -1
+            # yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[frame_number])
             norm_curv = self._append_missing_curvature_values(self.c_normalized[self.ed_frame])
             if coloring_scheme == 'curvature':
 
                 color_tr = cm.seismic(norm_curv)
-                color_tr[:, -1] = 0.3
+                color_tr[:, -1] = 0.9
                 color = cm.seismic(norm_curv)
                 # color[:, -1] = 0.01
                 size = 10
@@ -224,34 +224,44 @@ class PlottingCurvature:
         ax0.legend(handles=legend_elements0, loc='lower left', title='Cardiac cycle')
         ax1.legend(handles=legend_elements1, loc='upper right', title='Curvature')
 
-        norm = mpl.colors.Normalize(vmin=curv.min(), vmax=curv.max())
+        norm = mpl.colors.Normalize(vmin=-0.25, vmax=0.25)
         cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.seismic)
-        cmap.set_array([])
+        cmap.set_array([norm])
         fig.colorbar(cmap)
         fig.suptitle('Geometric curvature in the trace of LV')
         # fig.tight_layout()
-        fig.savefig(fname=os.path.join(self.output_path, '{}_colour_by_{}'.format(self.id, ext)))
+        if '.' in self.id:
+            self.id = self.id.replace('.', '_')
+        print(os.path.join(self.output_path, '{}_colour_by_{}.png'.format(self.id, ext)))
+        fig.savefig(fname=os.path.join(self.output_path, '{}_colour_by_{}.png'.format(self.id, ext)))
+        plt.clf()
         plt.close()
 
-    def plot_heatmap(self):
+    def plot_heatmap(self, smooth=False):
+        if smooth:
+            for point in range(self.curvature.shape[1]):
+                self.curvature[:, point] = savgol_filter(self.curvature[:, point],
+                                                         7, polyorder=5, mode='interp')
 
         fig = sns.heatmap(self.curvature.T, vmax=0.125, vmin=-0.07, center=0, cmap='seismic')
         fig.set_title('Curvature heatmap')
-        apex_pos = int(self.curvature.shape[1]/2)
+        apex_pos = int(self.curvature.shape[1] / 2)
         b_al_pos = self.curvature.shape[1] - 1
-        plt.yticks([1, apex_pos, b_al_pos], ['Basal\ninferoseptal', 'Apical', 'Basal\nanteroseptal'],
+        plt.yticks([1, apex_pos, b_al_pos], ['Basal\ninferoseptal', 'Apical', 'Basal\nanterolateral'],
                    rotation='horizontal')
-        plt.xticks([int(self.curvature.shape[0]/2)], ['Time'], rotation='horizontal')
+        plt.xticks([int(self.curvature.shape[0] / 2)], ['Time'], rotation='horizontal')
         plt.tick_params(axis=u'both', which=u'both', length=0)
+        plt.axhline(y=20,  c='k', ls='-.', lw=1)
+        plt.axhline(y=149, c='k', ls='-.', lw=1)
         plt.tight_layout()
-        plt.savefig(fname=os.path.join(self.output_path, 'Heatmap of {}'.format(self.id)))
+        plt.savefig(fname=os.path.join(self.output_path, 'Heatmap of {}.png'.format(self.id)))
         plt.close()
 
-# -----END-VentricleVisualization---------------------------------------------------------------------------------------
+# -----END-VentricleVisualization-----------------------------------------------------------------------------
 
 
 class PlottingDistributions:
-    # -----DistributionVisualization------------------------------------------------------------------------------------
+    # -----DistributionVisualization--------------------------------------------------------------------------
 
     def __init__(self, df, series, output_path):
         self.df = df
@@ -345,3 +355,7 @@ class PlottingDistributions:
         if show:
             plt.show()
         self._save_plot(series1 + '_vs_' + series2 + '_labeled.png', lm)
+
+
+if __name__ == '__main__':
+    pass
