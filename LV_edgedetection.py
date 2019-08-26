@@ -71,34 +71,6 @@ class Contour:
     def _pair_coordinates(edge):
         return np.array([(x, y) for x, y in zip(edge[0], edge[1])])
 
-    @staticmethod
-    def _look_around(coordinates_of_edge, cur_point, previous_point, existing_edge):
-
-        coordinates_of_edge = coordinates_of_edge.tolist()
-        touching_points = list()
-        for i in [cur_point[0]-1, cur_point[0], cur_point[0]+1]:
-            for j in [cur_point[1]-1, cur_point[1], cur_point[1]+1]:
-                if [i, j] in coordinates_of_edge and \
-                        np.all((i, j) != cur_point) and \
-                        np.all((i, j) != previous_point):
-                    touching_points.append((i, j))
-
-        if len(touching_points) == 1:  # If only one touching point was found return
-            return touching_points[0], False
-
-        for point in touching_points:  # If more points were found, return diagonal one
-            if point[0] != cur_point[0] and point[1] != cur_point[1] and point not in existing_edge:
-                return point, False
-
-        for point in touching_points:
-            # Due to segmentation faults, there are special cases -
-            # then choose point further from the previous point
-            if point[0] != previous_point[0] and point[1] != previous_point[1] \
-                    and point not in existing_edge:
-                return point, False
-
-        return cur_point, True
-
     def _correct_indices(self):
         # To make sure that endocardium and not the cavity is captured, relevant indices are moved by 1
         row_diffs = np.diff(self.current_gray_mask, axis=1)
@@ -114,13 +86,7 @@ class Contour:
         row_diffs_right = [row_diffs_right[0], row_diffs_right[1] + 0.5]
         col_diffs_down = [col_diffs_down[0] + 0.5, col_diffs_down[1]]
 
-        # plt.imshow(self.current_gray_mask, cmap='gray')
-        # plt.plot(row_diffs_right[1], row_diffs_right[0], 'rd')
-        # plt.plot(row_diffs_left[1], row_diffs_left[0], 'gd')
-        # plt.plot(col_diffs_up[1], col_diffs_up[0], 'b.')
-        # plt.plot(col_diffs_down[1], col_diffs_down[0], 'c.')
-        # plt.show()
-
+        # putting points together
         edge = list()
         edge_y = np.concatenate((row_diffs_right[0], row_diffs_left[0], col_diffs_down[0], col_diffs_up[0]))
         edge_x = np.concatenate((row_diffs_right[1], row_diffs_left[1], col_diffs_down[1], col_diffs_up[1]))
@@ -128,27 +94,28 @@ class Contour:
         edge.append(edge_y)
         return edge
 
-    def _find_closest_point(self, coordinates_of_edge, cur_point, previous_point, existing_edge):
+    def _find_closest_point(self, coordinates_of_edge, cur_point, existing_edge):
 
+        # find closest point ids
         cur_point_id = coordinates_of_edge.tolist().index(cur_point)
         closest_point_id = np.where(self.distance_matrix[cur_point_id, :] <= 1.)[0]
 
+        # compare with existing points
         temp_prev = existing_edge
-        if previous_point not in temp_prev:
-            temp_prev.append(previous_point)
 
+        # retrieve points that were not picked before
         closest_points = [cpi for cpi in coordinates_of_edge[closest_point_id].tolist() if cpi not in temp_prev]
 
-        print(cur_point)
-        print(closest_points)
-        print('---------')
-        if len(closest_points) >= 1:
+        # choose next point
+        if len(closest_points) == 1:
+            return closest_points[0], False
+
+        # go left if more than one close point found
+        if len(closest_points) > 1:
             closest_points.sort(key=lambda x: x[0])
             return closest_points[0], False
 
-        if np.all(cur_point == previous_point):
-            return closest_points[0], False
-
+        # if no point found, flag the boundary
         return cur_point, True
 
     def _walk_on_edge(self, coordinates_of_edge):
