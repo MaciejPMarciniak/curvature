@@ -7,10 +7,12 @@ from matplotlib import pyplot as plt
 from scipy.interpolate import Rbf
 from scipy.interpolate import UnivariateSpline
 import cv2
+import imageio
 import shutil
 from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
 from curvature import Curvature
+
 
 def check_directory(directory):
     if not os.path.isdir(directory):
@@ -38,12 +40,36 @@ class Contour:
         self.all_cycle = None
         self.endo = True
         self.smooth_res = 500
+        self.distance_matrix = np.zeros(1)
 
     @staticmethod
     def _check_directory(directory):
         if not os.path.isdir(directory):
             os.mkdir(directory)
         return directory
+
+    @staticmethod
+    def _expand_edge(sorted_edge_axis):
+        beg_ = np.ones(10) * sorted_edge_axis[0]
+        end_ = np.ones(10) * sorted_edge_axis[-1]
+        return np.concatenate((beg_, sorted_edge_axis, end_))
+
+    @staticmethod
+    def _make_grey_mask(mask):
+
+        # mask = cv2.resize(np.array(mask), (256, 256))
+        if mask.shape == (256, 256, 3):
+            mask_gray = cv2.cvtColor(np.array(mask), cv2.COLOR_BGR2GRAY)
+        else:
+            mask_gray = mask
+
+        # Remindex atrium
+        mask_gray[mask_gray == 255] = 250
+        return mask_gray
+
+    @staticmethod
+    def _pair_coordinates(edge):
+        return np.array([(x, y) for x, y in zip(edge[0], edge[1])])
 
     @staticmethod
     def _look_around(coordinates_of_edge, cur_point, previous_point, existing_edge):
@@ -73,31 +99,57 @@ class Contour:
 
         return cur_point, True
 
-    @staticmethod
-    def _expand_edge(sorted_edge_axis):
-        beg_ = np.ones(10) * sorted_edge_axis[0]
-        end_ = np.ones(10) * sorted_edge_axis[-1]
-        return np.concatenate((beg_, sorted_edge_axis, end_))
+    def _correct_indices(self):
+        # To make sure that endocardium and not the cavity is captured, relevant indices are moved by 1
+        row_diffs = np.diff(self.current_gray_mask, axis=1)
+        row_diffs_right = list(np.where(row_diffs == self.mask_edge_value))
+        row_diffs_left = list(np.where(row_diffs == 256 - self.mask_edge_value))
+        col_diffs = np.diff(self.current_gray_mask, axis=0)
+        col_diffs_down = list(np.where(col_diffs == self.mask_edge_value))
+        col_diffs_up = list(np.where(col_diffs == 256 - self.mask_edge_value))
 
-    @staticmethod
-    def _make_grey_mask(mask):
+        # index correction
+        row_diffs_left = [row_diffs_left[0], row_diffs_left[1] + 0.5]
+        col_diffs_up = [col_diffs_up[0] + 0.5, col_diffs_up[1]]
+        row_diffs_right = [row_diffs_right[0], row_diffs_right[1] + 0.5]
+        col_diffs_down = [col_diffs_down[0] + 0.5, col_diffs_down[1]]
 
-        mask = cv2.resize(np.array(mask), (256, 256))
-        if mask.shape == (256, 256, 3):
-            mask_gray = cv2.cvtColor(np.array(mask), cv2.COLOR_BGR2GRAY)
-        else:
-            mask_gray = mask
+        # plt.imshow(self.current_gray_mask, cmap='gray')
+        # plt.plot(row_diffs_right[1], row_diffs_right[0], 'rd')
+        # plt.plot(row_diffs_left[1], row_diffs_left[0], 'gd')
+        # plt.plot(col_diffs_up[1], col_diffs_up[0], 'b.')
+        # plt.plot(col_diffs_down[1], col_diffs_down[0], 'c.')
+        # plt.show()
 
-        # Remindex atrium
-        mask_gray[mask_gray == 255] = 250
-        return mask_gray
+        edge = list()
+        edge_y = np.concatenate((row_diffs_right[0], row_diffs_left[0], col_diffs_down[0], col_diffs_up[0]))
+        edge_x = np.concatenate((row_diffs_right[1], row_diffs_left[1], col_diffs_down[1], col_diffs_up[1]))
+        edge.append(edge_x)
+        edge.append(edge_y)
+        return edge
 
-    @staticmethod
-    def _pair_coordinates(edge):
-        indices = np.where(edge == 255)
-        y_pos = -indices[0]
-        x_pos = indices[1]
-        return np.array([(x, y) for x, y in zip(x_pos, y_pos)])
+    def _find_closest_point(self, coordinates_of_edge, cur_point, previous_point, existing_edge):
+
+        cur_point_id = coordinates_of_edge.tolist().index(cur_point)
+        closest_point_id = np.where(self.distance_matrix[cur_point_id, :] <= 1.)[0]
+
+        temp_prev = existing_edge
+        if previous_point not in temp_prev:
+            temp_prev.append(previous_point)
+
+        closest_points = [cpi for cpi in coordinates_of_edge[closest_point_id].tolist() if cpi not in temp_prev]
+
+        print(cur_point)
+        print(closest_points)
+        print('---------')
+        if len(closest_points) >= 1:
+            closest_points.sort(key=lambda x: x[0])
+            return closest_points[0], False
+
+        if np.all(cur_point == previous_point):
+            return closest_points[0], False
+
+        return cur_point, True
 
     def _walk_on_edge(self, coordinates_of_edge):
         """
@@ -108,17 +160,21 @@ class Contour:
         """
         sorted_edge = list()
         edge_points = list()
-        cur_point = tuple(max(coordinates_of_edge, key=lambda x: x[1]))
+        self.distance_matrix = cdist(coordinates_of_edge, coordinates_of_edge, metric='euclidean')
+        self.distance_matrix[self.distance_matrix == 0] = 100
+
+        cur_point = list(min(coordinates_of_edge, key=lambda t: t[1]))
         prev_point = cur_point
         sorted_edge.append(cur_point)
         while 1:
             try:
-                new_point, flag = self._look_around(coordinates_of_edge, cur_point, prev_point, sorted_edge)
+                new_point, flag = self._find_closest_point(coordinates_of_edge, cur_point, prev_point, sorted_edge)
             except TypeError:
                 plt.scatter(sorted_edge, s=1)
                 plt.xlim((0, 256))
                 plt.ylim((-256, 0))
                 self._save_failed_qc_image('Search for new point failed')
+                break
 
             if flag:
                 edge_points.append(cur_point)
@@ -133,42 +189,32 @@ class Contour:
                 sorted_edge.append(cur_point)
 
         basal_septal_edge = min(edge_points, key=lambda x: x[0])
-        if basal_septal_edge != sorted_edge[0]:
+        if np.all(basal_septal_edge != sorted_edge[0]):
             sorted_edge.reverse()
+
+        plt.imshow(self.current_gray_mask, cmap='gray')
+        x = [x[0] for x in sorted_edge]
+        y = [y[1] for y in sorted_edge]
+        plt.plot(x, y, 'r.')
+        plt.xlim((90, 160))
+        plt.ylim((30, 110))
+        plt.show()
 
         return sorted_edge
 
-    def _correct_indices(self):
-        # To make sure that endocardium and not the cavity is captured, relevant indices are moved by 1
-        row_diffs = np.diff(self.current_gray_mask, axis=1)
-        row_diffs_right = np.where(row_diffs == self.mask_edge_value)
-        row_diffs_left = np.where(row_diffs == 256 - self.mask_edge_value)
-        col_diffs = np.diff(self.current_gray_mask, axis=0)
-        col_diffs_down = np.where(col_diffs == self.mask_edge_value)
-        col_diffs_up = np.where(col_diffs == 256 - self.mask_edge_value)
+    def _lv_edges(self, seg_mask):
 
-        if self.endo:  # index correction
-            row_diffs_right = [row_diffs_right[0], row_diffs_right[1] + 1]
-            col_diffs_down = [col_diffs_down[0] + 1, col_diffs_down[1]]
-        else:
-            row_diffs_left = [row_diffs_left[0], row_diffs_left[1] + 1]
-            col_diffs_up = [col_diffs_up[0] + 1, col_diffs_up[1]]
+        self.current_gray_mask = self._make_grey_mask(seg_mask)
+        self.mask_edge_value = 85 if self.endo else 170
+        current_lv_edge = self._correct_indices()
+        coord_lv = self._pair_coordinates(current_lv_edge)
+        coord_lv_ordered = self._walk_on_edge(coord_lv)
+        # coord_lv_ordered, _ = self._scale_controus(endo=coord_lv_ordered)
 
-        edge = list()
-        edge.append(row_diffs_left)
-        edge.append(row_diffs_right)
-        edge.append(col_diffs_up)
-        edge.append(col_diffs_down)
+        if len(coord_lv_ordered) < 50:
+            self._save_failed_qc_image('Not enough edge points!', True)
 
-        return edge
-
-    def _extract_edge_image(self):
-        _lv_edge = np.zeros(self.current_gray_mask.shape, dtype=np.uint8)
-        corrected_indices = self._correct_indices()
-        for edge_pixels in corrected_indices:
-            _lv_edge[tuple(edge_pixels)] = 255
-
-        return _lv_edge
+        return coord_lv_ordered
 
     def _fit_border_through_pixels(self, endo=True, new_resolution=500, edge=None):
 
@@ -187,31 +233,17 @@ class Contour:
         fitted_x = fx(ss)
         fitted_y = fy(ss)
 
-        # plt.subplot(121)
-        # plt.scatter(range(len(se_x)), se_x)
-        # plt.plot(fitted_x, 'k', lw=4)
-        # plt.subplot(122)
-        # plt.scatter(range(len(se_y)), se_y)
-        # plt.plot(fitted_y, 'k', lw=4)
-        # plt.show()
+        plt.subplot(121)
+        plt.scatter(range(len(se_x)), se_x)
+        plt.plot(fitted_x, 'k', lw=4)
+        plt.subplot(122)
+        plt.scatter(range(len(se_y)), se_y)
+        plt.plot(fitted_y, 'k', lw=4)
+        plt.show()
 
         return [(x, y) for x, y in zip(fitted_x, fitted_y)]
 
-    def _lv_edges(self, seg_mask):
-
-        self.current_gray_mask = self._make_grey_mask(seg_mask)
-        self.mask_edge_value = 85 if self.endo else 170
-        current_lv_edge = self._extract_edge_image()
-        coord_lv = self._pair_coordinates(current_lv_edge)
-        coord_lv_ordered = self._walk_on_edge(coord_lv)
-        coord_lv_ordered, _ = self._scale_controus(endo=coord_lv_ordered)
-
-        if len(coord_lv_ordered) < 100:
-            self._save_failed_qc_image('Not enough edge points!', True)
-
-        return coord_lv_ordered
-
-    def _scale_controus(self, endo=None, epi=None):
+    def _scale_contours(self, endo=None, epi=None):
         # Rescaling to metric units (millimeters)
         if endo is not None:
             endo = [(x[0] * self.dimensions[0],
@@ -223,7 +255,7 @@ class Contour:
 
     def _calculate_wt(self):
 
-        endo_wt, epi_wt = self._scale_controus(*self._calculate_wt_borders(500))
+        endo_wt, epi_wt = self._scale_contours(*self._calculate_wt_borders(500))
 
         endo_wt = endo_wt[:int(0.4 * len(endo_wt))]
         epi_wt = epi_wt[:int(0.4 * len(epi_wt))]
@@ -264,14 +296,13 @@ class Contour:
             # epi_res = smooth_res
             endo_wt = self._fit_border_through_pixels(new_resolution=smooth_res, edge=endo_wt)
             epi_wt = self._fit_border_through_pixels(endo=False, new_resolution=epi_res, edge=epi_wt)
-
         return endo_wt, epi_wt
 
     def plot_wt(self, smooth_res=0):
 
         endo_wt, epi_wt = self._calculate_wt_borders(smooth_res)
-
-        endo_wt = endo_wt[:int(0.4*len(endo_wt))]
+        self.plot_mask_with_contour()
+        endo_wt = endo_wt[:int(0.4 * len(endo_wt))]
         epi_wt = epi_wt[:int(0.35 * len(epi_wt))]
         cost_matrix = cdist(endo_wt, epi_wt)
         _, result_col = linear_sum_assignment(cost_matrix)
@@ -303,31 +334,34 @@ class Contour:
         #             plt.plot([endo_point[0], epi_point[0]], [-endo_point[1], -epi_point[1]], 'y')
         plt.show()
 
+    def plot_mask_with_contour(self):
+
+        plt.imshow(self.current_gray_mask)
+        xc = np.array([x[0] for x in self.endo_sorted_edge])
+        yc = -np.array([y[1] for y in self.endo_sorted_edge])
+        plt.plot(xc, yc, 'r')
+
+        xc = np.array([x[0] for x in self.epi_sorted_edge])
+        yc = -np.array([y[1] for y in self.epi_sorted_edge])
+        plt.plot(xc, yc, 'b')
+        plt.show()
+
     def lv_endo_edges(self):
 
         if self.segmentations_path is not None:
             for seg_file in self.seg_files:
                 print(seg_file)
-                seg_mask = cv2.imread(seg_file)
+                # if seg_file != '/home/mat/Pictures/LAX_UKBB_corr/1035519_la_4Ch_seg_ED.png':
+                #     continue
+                seg_mask = imageio.imread(seg_file)
                 self.endo = True
                 self.endo_sorted_edge = self._lv_edges(seg_mask)
-                self.endo = False
-                self.epi_sorted_edge = self._lv_edges(seg_mask)
-                self.smooth_res = 500
-                self.plot_wt(500)
-                bwt, mwt = self._calculate_wt()
-                print(bwt, mwt)
-                exit()
-                plt.imshow(self.current_gray_mask)
-                xc = np.array([x[0] for x in self.endo_sorted_edge])
-                yc = -np.array([y[1] for y in self.endo_sorted_edge])
-                plt.plot(xc, yc, 'r')
-
-                xc = np.array([x[0] for x in self.epi_sorted_edge])
-                yc = -np.array([y[1] for y in self.epi_sorted_edge])
-                plt.plot(xc, yc, 'b')
-                plt.show()
-
+                # self.endo = False
+                # self.epi_sorted_edge = self._lv_edges(seg_mask)
+                # self.smooth_res = 500
+                # self.plot_wt(500)
+                # bwt, mwt = self._calculate_wt()
+                # print(bwt, mwt)
                 self._save_results(basename(seg_file)[:-4])
 
         elif self.segmentation_cycle is not None:
@@ -386,7 +420,6 @@ class Contour:
         min_cont_y = np.min([-c[1] for c in tmp_smooth])
         max_cont_x = np.max([c[0] for c in tmp_smooth])
         min_cont_x = np.min([c[0] for c in tmp_smooth])
-
         percent_prev_contour_diff = np.abs(len(self.endo_sorted_edge) - len(prev_cont)) / len(prev_cont)
         if percent_prev_contour_diff > 0.25:  # 25% of previous contour
             print('percent_prev_contour_diff: {}'.format(percent_prev_contour_diff))
@@ -439,8 +472,8 @@ class Contour:
         plt.clf()
         self.endo_sorted_edge = np.array(self.endo_sorted_edge)
         plt.plot(self.endo_sorted_edge[:, 0], self.endo_sorted_edge[:, 1], 'k-')
-        plt.xlim((0, 256))
-        plt.ylim((-256, 0))
+        # plt.xlim((0, 256))
+        # plt.ylim((-256, 0))
         plt.savefig(os.path.join(out_dir, basename_file + '_ordered.png'))
         plt.clf()
 
@@ -449,6 +482,7 @@ class Contour:
             plt.imshow(self.current_gray_mask)
         plt.plot([x[0] for x in self.endo_sorted_edge], [-y[1] for y in self.endo_sorted_edge], 'r')
         plt.title(plot_title)
+
         case_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
                                                 self.s_sopid.replace('.', '_')))
         print(case_dir)
@@ -466,6 +500,8 @@ if __name__ == '__main__':
     # parser.add_argument('-s', '--segmentations', help='Segmentation results from NTNU model', required=True)
     # parser.add_argument('-o', '--output_path', help='Directory where output will be stored', required=True)
     # args = parser.parse_args()
-
-    cont = Contour(os.getcwd(), os.getcwd(), dimensions=(1, 1))
+    segmentations_path = '/home/mat/Pictures/LAX_UKBB_corr'
+    output_path = '/home/mat/Pictures/LAX_UKBB_corr/contours'
+    # cont = Contour(os.getcwd(), os.getcwd(), dimensions=(1, 1))
+    cont = Contour(segmentations_path, output_path)
     cont.lv_endo_edges()

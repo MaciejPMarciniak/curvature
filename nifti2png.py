@@ -41,7 +41,7 @@ class ConvertNIfTI2PNG:
         n_image[n_image > 2] = 0
         if np.abs(quaterns[1]) < np.abs(quaterns[3]):  # transpose if necessary
             n_image = np.transpose(n_image)
-        n_image = n_image * 128 - 1
+        n_image = n_image * 85
         png_image = Image.fromarray(n_image)
         png_image = png_image.convert("L")
         png_image.save(os.path.join(self.output_path, os.path.basename(self.nifti_filename.split('.')[0] + '.png')))
@@ -52,6 +52,7 @@ def save_nifti_images_info(path_to_nifti_images='', output_path='', image_info_f
 
     nifti_images_list = []
     for n_file in glob.glob(os.path.join(path_to_nifti_images, '*')):
+        print(n_file)
         nif = ConvertNIfTI2PNG(path_to_nifti_images, output_path, n_file)
         nif_info = dict()
         nif_info['id'] = os.path.basename(n_file).split('.')[0]
@@ -64,7 +65,7 @@ def save_nifti_images_info(path_to_nifti_images='', output_path='', image_info_f
         # If the image was transposed, the dimensions and voxel sizes should be transposed accordingly:
         if np.abs(quaterns[1]) < np.abs(quaterns[3]):
             nif_info['voxel_size_height'], nif_info['voxel_size_width'] = \
-                nif_info['voxel_size_width'],nif_info['voxel_size_height']
+                nif_info['voxel_size_width'], nif_info['voxel_size_height']
             nif_info['dim_height'], nif_info['dim_width'] = nif_info['dim_width'], nif_info['dim_height']
         nif_info['units'] = nif.nifti.header.get_xyzt_units()[0]
         nifti_images_list.append(nif_info)
@@ -78,17 +79,18 @@ def save_nifti_images_info(path_to_nifti_images='', output_path='', image_info_f
 # ----------------------------------------------------------------------------------------------------------------------
 
 
+path_to_nifti_images = '/media/mat/D6B7-122E/LAX_UKBB/LAX_UKBB'
+output_path = '/home/mat/Pictures/LAX_UKBB'
+
 # ---Save image info
-# path_to_nifti_images = '/media/mat/D6B7-122E/LAX_UKBB/LAX_UKBB'
-# output_path = '/home/mat/Pictures/LAX_UKBB'
 # save_nifti_images_info(path_to_nifti_images, output_path)
 
 # ---Convert files
-# for n_file in glob.glob(os.path.join(path_to_nifti_images, '*')):
-#
-#     ven = ConvertNIfTI2PNG(path_to_nifti_images, output_path, n_file)
-#     ven.print_nifti_info()
+for n_file in glob.glob(os.path.join(path_to_nifti_images, '*')):
+
+    ven = ConvertNIfTI2PNG(path_to_nifti_images, output_path, n_file)
+    # ven.print_nifti_info()
     # ven.show_nifti_image()
-    # ven.save_nifti_image_as_png()
+    ven.save_nifti_image_as_png()
 
 
