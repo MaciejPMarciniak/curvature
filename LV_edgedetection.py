@@ -4,9 +4,7 @@ from ntpath import basename
 import argparse
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.interpolate import Rbf
 from scipy.interpolate import UnivariateSpline
-import cv2
 import imageio
 import shutil
 from scipy.spatial.distance import cdist
@@ -55,17 +53,15 @@ class Contour:
         return np.concatenate((beg_, sorted_edge_axis, end_))
 
     @staticmethod
-    def _make_grey_mask(mask):
+    def _reindex_atrium(mask):
 
         # mask = cv2.resize(np.array(mask), (256, 256))
-        if mask.shape == (256, 256, 3):
-            mask_gray = cv2.cvtColor(np.array(mask), cv2.COLOR_BGR2GRAY)
-        else:
-            mask_gray = mask
-
-        # Remindex atrium
-        mask_gray[mask_gray == 255] = 250
-        return mask_gray
+        # if mask.shape == (256, 256, 3):
+        #     mask_gray = cv2.cvtColor(np.array(mask), cv2.COLOR_BGR2GRAY)
+        # else:
+        #     mask_gray = mask
+        mask[mask == 255] = 250
+        return mask
 
     @staticmethod
     def _pair_coordinates(edge):
@@ -131,11 +127,10 @@ class Contour:
         self.distance_matrix[self.distance_matrix == 0] = 100
 
         cur_point = list(min(coordinates_of_edge, key=lambda t: t[1]))
-        prev_point = cur_point
         sorted_edge.append(cur_point)
         while 1:
             try:
-                new_point, flag = self._find_closest_point(coordinates_of_edge, cur_point, prev_point, sorted_edge)
+                new_point, flag = self._find_closest_point(coordinates_of_edge, cur_point, sorted_edge)
             except TypeError:
                 plt.scatter(sorted_edge, s=1)
                 plt.xlim((0, 256))
@@ -149,9 +144,7 @@ class Contour:
                     break
                 sorted_edge.reverse()
                 cur_point = sorted_edge[-1]
-                prev_point = sorted_edge[-2]
             else:
-                prev_point = cur_point
                 cur_point = new_point
                 sorted_edge.append(cur_point)
 
@@ -171,7 +164,7 @@ class Contour:
 
     def _lv_edges(self, seg_mask):
 
-        self.current_gray_mask = self._make_grey_mask(seg_mask)
+        self.current_gray_mask = self._reindex_atrium(seg_mask)
         self.mask_edge_value = 85 if self.endo else 170
         current_lv_edge = self._correct_indices()
         coord_lv = self._pair_coordinates(current_lv_edge)

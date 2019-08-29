@@ -9,7 +9,6 @@ import shutil
 from itertools import combinations
 from scipy.interpolate import interp1d, Rbf, UnivariateSpline
 from scipy.signal import savgol_filter
-from pykalman import KalmanFilter
 from openvino.inference_engine import IENetwork, IEPlugin
 from PIL import Image
 from curvature import Curvature
