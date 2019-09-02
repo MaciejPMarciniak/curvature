@@ -8,6 +8,7 @@ import pandas as pd
 from skimage import measure
 import imageio
 
+
 class ConvertNIfTI2PNG:
 
     def __init__(self, path_to_images, output_path, nifti_filename):
@@ -35,7 +36,6 @@ class ConvertNIfTI2PNG:
     def save_nifti_image_as_png(self, output_path=None):
         if output_path is not None:
             self.output_path = output_path
-
         quaterns = self.nifti.header.get_qform_quaternion()
         n_image = np.squeeze(self.nifti.get_fdata())
         n_image[n_image > 2] = 0
@@ -78,16 +78,21 @@ def save_nifti_images_info(path_to_nifti_images='', output_path='', image_info_f
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# LINUX
+# path_to_nifti_images = '/media/mat/D6B7-122E/LAX_UKBB/LAX_UKBB'
+# output_path = '/home/mat/Pictures/LAX_UKBB'
 
-path_to_nifti_images = '/media/mat/D6B7-122E/LAX_UKBB/LAX_UKBB'
-output_path = '/home/mat/Pictures/LAX_UKBB'
+# WINDOWS
+path_to_nifti_images = 'C:\Data\LAX_UKBB'
+output_path = 'C:\Data\LAX_UKBB\corrected'
 
 # ---Save image info
 # save_nifti_images_info(path_to_nifti_images, output_path)
 
 # ---Convert files
-for n_file in glob.glob(os.path.join(path_to_nifti_images, '*')):
+for n_file in glob.glob(os.path.join(path_to_nifti_images, '*gz')):
 
+    print(n_file)
     ven = ConvertNIfTI2PNG(path_to_nifti_images, output_path, n_file)
     # ven.print_nifti_info()
     # ven.show_nifti_image()

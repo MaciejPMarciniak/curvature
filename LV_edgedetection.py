@@ -4,12 +4,12 @@ from ntpath import basename
 import argparse
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.interpolate import UnivariateSpline
 import imageio
 import shutil
 from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
 from curvature import Curvature
+from oct2py import Oct2Py
 
 
 def check_directory(directory):
@@ -33,11 +33,13 @@ class Contour:
             self.seg_files = glob.glob(os.path.join(self.segmentations_path, '*.png'))
             self.seg_files.sort()
         self.current_gray_mask = None
+        self.all_cycle = None
+
         self.endo_sorted_edge = list()
         self.epi_sorted_edge = list()
-        self.all_cycle = None
-        self.endo = True
-        self.smooth_res = 500
+        self.mask_values = {'LV_bp': 85, 'LV_myo': 170}
+        self.is_lv_endo = True
+        self.smoothing_resolution = 500
         self.distance_matrix = np.zeros(1)
 
     @staticmethod
@@ -47,19 +49,8 @@ class Contour:
         return directory
 
     @staticmethod
-    def _expand_edge(sorted_edge_axis):
-        beg_ = np.ones(10) * sorted_edge_axis[0]
-        end_ = np.ones(10) * sorted_edge_axis[-1]
-        return np.concatenate((beg_, sorted_edge_axis, end_))
-
-    @staticmethod
     def _reindex_atrium(mask):
 
-        # mask = cv2.resize(np.array(mask), (256, 256))
-        # if mask.shape == (256, 256, 3):
-        #     mask_gray = cv2.cvtColor(np.array(mask), cv2.COLOR_BGR2GRAY)
-        # else:
-        #     mask_gray = mask
         mask[mask == 255] = 250
         return mask
 
@@ -70,11 +61,11 @@ class Contour:
     def _correct_indices(self):
         # To make sure that endocardium and not the cavity is captured, relevant indices are moved by 1
         row_diffs = np.diff(self.current_gray_mask, axis=1)
-        row_diffs_right = list(np.where(row_diffs == self.mask_edge_value))
-        row_diffs_left = list(np.where(row_diffs == 256 - self.mask_edge_value))
+        row_diffs_right = list(np.where(row_diffs == self.edge_diff_value))
+        row_diffs_left = list(np.where(row_diffs == 256 - self.edge_diff_value))
         col_diffs = np.diff(self.current_gray_mask, axis=0)
-        col_diffs_down = list(np.where(col_diffs == self.mask_edge_value))
-        col_diffs_up = list(np.where(col_diffs == 256 - self.mask_edge_value))
+        col_diffs_down = list(np.where(col_diffs == self.edge_diff_value))
+        col_diffs_up = list(np.where(col_diffs == 256 - self.edge_diff_value))
 
         # index correction
         row_diffs_left = [row_diffs_left[0], row_diffs_left[1] + 0.5]
@@ -88,6 +79,7 @@ class Contour:
         edge_x = np.concatenate((row_diffs_right[1], row_diffs_left[1], col_diffs_down[1], col_diffs_up[1]))
         edge.append(edge_x)
         edge.append(edge_y)
+
         return edge
 
     def _find_closest_point(self, coordinates_of_edge, cur_point, existing_edge):
@@ -96,11 +88,8 @@ class Contour:
         cur_point_id = coordinates_of_edge.tolist().index(cur_point)
         closest_point_id = np.where(self.distance_matrix[cur_point_id, :] <= 1.)[0]
 
-        # compare with existing points
-        temp_prev = existing_edge
-
         # retrieve points that were not picked before
-        closest_points = [cpi for cpi in coordinates_of_edge[closest_point_id].tolist() if cpi not in temp_prev]
+        closest_points = [cpi for cpi in coordinates_of_edge[closest_point_id].tolist() if cpi not in existing_edge]
 
         # choose next point
         if len(closest_points) == 1:
@@ -123,6 +112,7 @@ class Contour:
         """
         sorted_edge = list()
         edge_points = list()
+
         self.distance_matrix = cdist(coordinates_of_edge, coordinates_of_edge, metric='euclidean')
         self.distance_matrix[self.distance_matrix == 0] = 100
 
@@ -152,20 +142,48 @@ class Contour:
         if np.all(basal_septal_edge != sorted_edge[0]):
             sorted_edge.reverse()
 
-        plt.imshow(self.current_gray_mask, cmap='gray')
-        x = [x[0] for x in sorted_edge]
-        y = [y[1] for y in sorted_edge]
-        plt.plot(x, y, 'r.')
-        plt.xlim((90, 160))
-        plt.ylim((30, 110))
-        plt.show()
-
         return sorted_edge
+
+    def _fit_border_through_pixels(self, edge=None):
+        """
+        Prerequisites to run matlab code from python:
+        download & install Java Runtime Environment
+        download & install Octave
+        add all necessary paths to used files
+        :param edge: if provided, given set of points is smoothed (implies that the points are sorted in some way).
+        Otherwise one of the attributes is picked, based on the value of self.is_lv_endo:
+        True -> lv_endo_sorted_edge
+        False -> lv_epi_sorted_edge
+        :return: list of points of the smooth contour, with resolution controlled by smoothing_resolution
+        """
+        if edge is not None:
+            border = edge
+        elif self.is_lv_endo:
+            border = self.endo_sorted_edge
+        else:
+            border = self.epi_sorted_edge
+            self.smoothing_resolution = 2500
+
+        print('Fitting')
+        oc = Oct2Py()
+        # Add paths with relevant scripts and functions
+        matlab_code_path = os.path.join('C:/', 'Code', 'computationalcardiacanatomy')
+        pth = [x[0] for x in os.walk(os.path.join(matlab_code_path, 'Accesory', 'MeshHandling'))]
+        pth.append(os.path.join(matlab_code_path, 'Personalization', 'CoreFunctions'))
+        pth.append(os.path.join(matlab_code_path, 'Personalization', 'AccessoryFunctions'))
+        pth.append(os.path.join('C:\Code', 'computationalcardiacanatomy', 'Scripts'))
+        [oc.addpath(sub_pth) for sub_pth in pth]
+        # Get smooth contour. 12 is the number of elements (why?)
+        fit = oc.ScriptFitUltrasoundContour(border, 12, self.smoothing_resolution)
+        print('Fitting complete')
+        fitted_points = [(p[0], p[1]) for p in fit]
+
+        return fitted_points
 
     def _lv_edges(self, seg_mask):
 
         self.current_gray_mask = self._reindex_atrium(seg_mask)
-        self.mask_edge_value = 85 if self.endo else 170
+        self.edge_diff_value = self.mask_values['LV_bp'] if self.is_lv_endo else self.mask_values['LV_myo']
         current_lv_edge = self._correct_indices()
         coord_lv = self._pair_coordinates(current_lv_edge)
         coord_lv_ordered = self._walk_on_edge(coord_lv)
@@ -176,32 +194,21 @@ class Contour:
 
         return coord_lv_ordered
 
-    def _fit_border_through_pixels(self, endo=True, new_resolution=500, edge=None):
+# -----WallThicknessMeasurements----------------------------------------------------------------------------------------
+    def _calculate_bidirectional_local_distance_matrix(self):
+        bidirectional_local_distance = {}
+        cost_matrix = cdist(np.array(self.endo_sorted_edge), np.array(self.epi_sorted_edge))
 
-        if edge is not None:
-            border = edge
-        elif endo:
-            border = self.endo_sorted_edge
-        else:
-            border = self.epi_sorted_edge
+        forward_min_distance = np.argmin(cost_matrix, axis=1)
+        for p_ref, p_t in enumerate(forward_min_distance):
+            bidirectional_local_distance[p_ref] = p_t
 
-        se_x = np.array([x[0] for x in border])
-        se_y = np.array([y[1] for y in border])
-        fx = UnivariateSpline(range(len(se_x)), se_x, s=int(len(se_x)/6))
-        fy = UnivariateSpline(range(len(se_y)), se_y, s=int(len(se_y)/10))
-        ss = np.linspace(0, len(se_x), new_resolution)
-        fitted_x = fx(ss)
-        fitted_y = fy(ss)
+        backward_min_distance = np.argmin(cost_matrix, axis=0)
+        for p_t, p_ref in enumerate(backward_min_distance):
+            if cost_matrix[p_ref, p_t] > cost_matrix[p_ref, bidirectional_local_distance[p_ref]]:
+                bidirectional_local_distance[p_ref] = p_t
 
-        plt.subplot(121)
-        plt.scatter(range(len(se_x)), se_x)
-        plt.plot(fitted_x, 'k', lw=4)
-        plt.subplot(122)
-        plt.scatter(range(len(se_y)), se_y)
-        plt.plot(fitted_y, 'k', lw=4)
-        plt.show()
-
-        return [(x, y) for x, y in zip(fitted_x, fitted_y)]
+        return bidirectional_local_distance
 
     def _scale_contours(self, endo=None, epi=None):
         # Rescaling to metric units (millimeters)
@@ -215,121 +222,53 @@ class Contour:
 
     def _calculate_wt(self):
 
-        endo_wt, epi_wt = self._scale_contours(*self._calculate_wt_borders(500))
+        # Scale contours based on voxel distance. If scalled during contour creation, it is unnecessary here.
+        # endo_wt, epi_wt = self._scale_contours(*self._calculate_wt_borders())
 
-        endo_wt = endo_wt[:int(0.4 * len(endo_wt))]
-        epi_wt = epi_wt[:int(0.4 * len(epi_wt))]
-        cost_matrix = cdist(endo_wt, epi_wt)
-        _, result_col = linear_sum_assignment(cost_matrix)
+        print('Calculating wall thickness')
 
-        thickness = np.zeros(len(endo_wt))
+        bld = self._calculate_bidirectional_local_distance_matrix()
+        thickness = np.zeros(len(self.endo_sorted_edge))
 
-        for i in range(len(endo_wt)):
-            endo_point = endo_wt[i]
-            epi_point = epi_wt[result_col[i]]
-            thickness[i] = np.linalg.norm(np.array(endo_point) - np.array(epi_point))
+        for point in range(len(thickness)):
+            endo_point = self.endo_sorted_edge[point]
+            epi_point = self.epi_sorted_edge[bld[point]]
+            thickness[point] = np.linalg.norm(np.array(endo_point) - np.array(epi_point))
 
         basal_thicknesses = thickness[:83]
-        mid_thicknesses = thickness[83:180]
+        mid_thicknesses = thickness[83:166]
 
         max_basal_thickness = np.max(basal_thicknesses)
         mean_mid_thickness = np.mean(mid_thicknesses)
 
         return max_basal_thickness, mean_mid_thickness
 
-    def _retrieve_epicardium_for_wt(self, endo):
-        len_epi = len(self.epi_sorted_edge)
-        left_epi = self.epi_sorted_edge[:int(len_epi / 2)]
-        right_epi = self.epi_sorted_edge[int(len_epi / 2):]
-        left_epi_cropped = [epi_point for epi_point in left_epi if epi_point[1] >= endo[0][1]]
-        right_epi_cropped = [epi_point for epi_point in right_epi if epi_point[1] >= endo[-1][1]]
-        return left_epi_cropped + right_epi_cropped
-
-    def _calculate_wt_borders(self, smooth_res=0):
-
-        # It works only if the myocardial wall is parallel to y axis, otherwise there is bias.
-        # epi_wt = self._retrieve_epicardium_for_wt(endo_wt)
-        epi_wt = self.epi_sorted_edge[:]
-        endo_wt = self.endo_sorted_edge[:]
-        if smooth_res:
-            epi_res = int(smooth_res * len(epi_wt) / len(endo_wt))
-            # epi_res = smooth_res
-            endo_wt = self._fit_border_through_pixels(new_resolution=smooth_res, edge=endo_wt)
-            epi_wt = self._fit_border_through_pixels(endo=False, new_resolution=epi_res, edge=epi_wt)
-        return endo_wt, epi_wt
-
-    def plot_wt(self, smooth_res=0):
-
-        endo_wt, epi_wt = self._calculate_wt_borders(smooth_res)
-        self.plot_mask_with_contour()
-        endo_wt = endo_wt[:int(0.4 * len(endo_wt))]
-        epi_wt = epi_wt[:int(0.35 * len(epi_wt))]
-        cost_matrix = cdist(endo_wt, epi_wt)
-        _, result_col = linear_sum_assignment(cost_matrix)
-
-        plt.imshow(self.current_gray_mask, cmap='gray')
-        se_x = np.array([x[0] for x in endo_wt])
-        se_y = np.array([y[1] for y in endo_wt])
-        plt.plot(se_x, -se_y, color='r')
-        se_x = np.array([x[0] for x in epi_wt])
-        se_y = np.array([y[1] for y in epi_wt])
-        plt.plot(se_x, -se_y, color='b')
-        for i in range(len(endo_wt)):
-            if i % 5 == 0:
-                endo_point = endo_wt[i]
-                epi_point = epi_wt[result_col[i]]
-                plt.plot([endo_point[0], epi_point[0]], [-endo_point[1], -epi_point[1]], 'y')
-
-        # for i, endo_point in enumerate(endo_wt):
-        #     if i % 10 == 0:
-        #         if i < 190:
-        #             epi_point = epi_wt[i]
-        #             plt.plot([endo_point[0], epi_point[0]], [-endo_point[1], -epi_point[1]], 'y')
-        # for i, endo_point in enumerate(endo_wt[::-1]):
-        #     print(i)
-        #     if i % 10 == 1:
-        #         if i < 210:
-        #             epi_point = epi_wt[-i]
-        #             print(epi_point)
-        #             plt.plot([endo_point[0], epi_point[0]], [-endo_point[1], -epi_point[1]], 'y')
-        plt.show()
-
-    def plot_mask_with_contour(self):
-
-        plt.imshow(self.current_gray_mask)
-        xc = np.array([x[0] for x in self.endo_sorted_edge])
-        yc = -np.array([y[1] for y in self.endo_sorted_edge])
-        plt.plot(xc, yc, 'r')
-
-        xc = np.array([x[0] for x in self.epi_sorted_edge])
-        yc = -np.array([y[1] for y in self.epi_sorted_edge])
-        plt.plot(xc, yc, 'b')
-        plt.show()
-
-    def lv_endo_edges(self):
+    # MainFunction
+    def lv_edges(self, calculate_wt):
 
         if self.segmentations_path is not None:
             for seg_file in self.seg_files:
                 print(seg_file)
-                # if seg_file != '/home/mat/Pictures/LAX_UKBB_corr/1035519_la_4Ch_seg_ED.png':
-                #     continue
                 seg_mask = imageio.imread(seg_file)
-                self.endo = True
+                self.is_lv_endo = True
                 self.endo_sorted_edge = self._lv_edges(seg_mask)
-                # self.endo = False
-                # self.epi_sorted_edge = self._lv_edges(seg_mask)
-                # self.smooth_res = 500
-                # self.plot_wt(500)
-                # bwt, mwt = self._calculate_wt()
-                # print(bwt, mwt)
+                self.endo_sorted_edge = self._fit_border_through_pixels()
                 self._save_results(basename(seg_file)[:-4])
+
+                if calculate_wt:
+                    self.is_lv_endo = False
+                    self.epi_sorted_edge = self._lv_edges(seg_mask)
+                    self.epi_sorted_edge = self._fit_border_through_pixels()
+                    self.plot_mask_with_contour(self.endo_sorted_edge, self.epi_sorted_edge)
+                    bwt, mwt = self._calculate_wt()
+                    self.plot_wt()
+                    print('Basal maximum wt: {}, mid mean wt: {}'.format(bwt, mwt))
 
         elif self.segmentation_cycle is not None:
 
             print('length of the cycle: {}'.format(len(self.segmentation_cycle)))
             cycle_coords = []
             self.endo_sorted_edge = self._lv_edges(self.segmentation_cycle[0])
-            self.smooth_res = 500
             prev_cont = self.endo_sorted_edge
 
             failed = 0
@@ -338,13 +277,8 @@ class Contour:
                 self.img_index = seg_img_i
 
                 if self._check_contour_quality(np.array(seg_img), prev_cont):
-                    cycle_coords.append(self._fit_border_through_pixels(new_resolution=500))
+                    cycle_coords.append(self._fit_border_through_pixels())
                     prev_cont = self.endo_sorted_edge
-                    # se_x = np.array([x[0] for x in cycle_coords[seg_img_i]])
-                    # se_y = np.array([y[1] for y in cycle_coords[seg_img_i]])
-                    # # plt.imshow(seg_img)
-                    # plt.scatter(se_x, -se_y)
-                    # plt.show()
                 else:
                     failed += 1
 
@@ -353,6 +287,51 @@ class Contour:
             else:
                 self.all_cycle = None
 
+    def _save_results(self, basename_file):
+        out_dir = self._check_directory(os.path.join(self.output_path, 'Contour_tables'))
+        np.savetxt(os.path.join(out_dir, basename_file + '.csv'), self.endo_sorted_edge)
+
+        out_dir = self._check_directory(os.path.join(self.output_path, 'Edge_images'))
+        plt.imshow(self.current_gray_mask)
+        if self.endo_sorted_edge:
+            plt.plot([x[0] for x in self.endo_sorted_edge], [y[1] for y in self.endo_sorted_edge], 'r--')
+        if self.epi_sorted_edge:
+            plt.plot([x[0] for x in self.endo_sorted_edge], [y[1] for y in self.endo_sorted_edge], 'b--')
+        plt.savefig(os.path.join(out_dir, basename_file + '_ordered.png'))
+        plt.clf()
+
+# -----Plotting---------------------------------------------------------------------------------------------------------
+    def plot_mask_with_contour(self, contour1=None, contour2=None):
+
+        plt.imshow(self.current_gray_mask, cmap='gray')
+        if contour1 is not None:
+            xc = np.array([x[0] for x in self.endo_sorted_edge])
+            yc = np.array([y[1] for y in self.endo_sorted_edge])
+            plt.plot(xc, yc, 'r.-')
+
+        if contour2 is not None:
+            xc = np.array([x[0] for x in self.epi_sorted_edge])
+            yc = np.array([y[1] for y in self.epi_sorted_edge])
+            plt.plot(xc, yc, 'b.-')
+        plt.show()
+        plt.clf()
+
+    def plot_wt(self):
+
+        bld = self._calculate_bidirectional_local_distance_matrix()
+        plt.imshow(self.current_gray_mask, cmap='gray')
+        for key in bld:
+            xs = self.endo_sorted_edge[key][0], self.epi_sorted_edge[bld[key]][0]
+            ys = self.endo_sorted_edge[key][1], self.epi_sorted_edge[bld[key]][1]
+            plt.plot(xs, ys, 'y--')
+
+        plt.plot([x[0] for x in self.epi_sorted_edge], [x[1] for x in self.epi_sorted_edge], 'b.')
+        plt.plot([x[0] for x in self.endo_sorted_edge], [x[1] for x in self.endo_sorted_edge], 'r.')
+        plt.show()
+        plt.clf()
+# ---END Plotting-------------------------------------------------------------------------------------------------------
+
+# -----QualityChecks----------------------------------------------------------------------------------------------------
     def _check_contour_quality(self, mask, prev_cont):
 
         values, counts = np.unique(mask, return_counts=True)  # returned array is sorted
@@ -423,20 +402,6 @@ class Contour:
 
         return True
 
-    def _save_results(self, basename_file):
-        out_dir = self._check_directory(os.path.join(self.output_path, 'Contour_tables'))
-        np.savetxt(os.path.join(out_dir, basename_file + '.csv'), self.endo_sorted_edge)
-        plt.imshow(self.endo_sorted_edge, cmap='gray')
-        out_dir = self._check_directory(os.path.join(self.output_path, 'Edge_images'))
-        plt.savefig(os.path.join(out_dir, basename_file + '.png'))
-        plt.clf()
-        self.endo_sorted_edge = np.array(self.endo_sorted_edge)
-        plt.plot(self.endo_sorted_edge[:, 0], self.endo_sorted_edge[:, 1], 'k-')
-        # plt.xlim((0, 256))
-        # plt.ylim((-256, 0))
-        plt.savefig(os.path.join(out_dir, basename_file + '_ordered.png'))
-        plt.clf()
-
     def _save_failed_qc_image(self, plot_title, mask=False):
         if mask is not None:
             plt.imshow(self.current_gray_mask)
@@ -452,6 +417,7 @@ class Contour:
         plt.savefig(os.path.join(failed_dir, '{}_{}_{}.png'.format(self.img_index, plot_title,
                                                                    self.cycle_index)))
         plt.close()
+# ---END QualityChecks--------------------------------------------------------------------------------------------------
 
 
 if __name__ == '__main__':
@@ -460,8 +426,13 @@ if __name__ == '__main__':
     # parser.add_argument('-s', '--segmentations', help='Segmentation results from NTNU model', required=True)
     # parser.add_argument('-o', '--output_path', help='Directory where output will be stored', required=True)
     # args = parser.parse_args()
-    segmentations_path = '/home/mat/Pictures/LAX_UKBB_corr'
-    output_path = '/home/mat/Pictures/LAX_UKBB_corr/contours'
+
+    # LINUX
+    # segmentations_path = '/home/mat/Pictures/LAX_UKBB_corr'
+    # output_path = '/home/mat/Pictures/LAX_UKBB_corr/contours'
+    # WINDOWS
+    segmentations_path = 'C:\Data\LAX_UKBB\corrected'
+    output_path = 'C:\Data\LAX_UKBB\corrected\contours'
     # cont = Contour(os.getcwd(), os.getcwd(), dimensions=(1, 1))
     cont = Contour(segmentations_path, output_path)
-    cont.lv_endo_edges()
+    cont.lv_edges(calculate_wt=True)

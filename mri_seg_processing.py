@@ -78,6 +78,16 @@ class ProcessMRI:
             corrected_png.convert('L')
             corrected_png.save(os.path.join(self.output_path, os.path.basename(png_filename)))
 
+    def resize_images(self, scaler=2):
+
+        resized_images_directory = self._check_directory(os.path.join(self.output_path, 'resized_images'))
+        for png_filename in glob.glob(os.path.join(self.path_to_png_images, '*.png')):
+            print(png_filename)
+            png = imageio.imread(png_filename)
+            resized_png = Image.fromarray(png)
+            resized_png = resized_png.resize((scaler*dim for dim in png.shape[::-1]), Image.BILINEAR)
+            resized_png.save(os.path.join(resized_images_directory, os.path.basename(png_filename)))
+
     def move_low_quality_images(self):
 
         missing_septal_base_dir = self._check_directory(os.path.join(self.output_path, 'missing_basal_septum'))
@@ -87,6 +97,7 @@ class ProcessMRI:
 
             min_bpx, min_bpy, max_bpx, max_bpy = self._find_extreme_coordinates(png, 85)
             min_myox, min_myoy, max_myox, max_myoy = self._find_extreme_coordinates(png, 170)
+            min_atx, min_aty, max_atx, max_aty = self._find_extreme_coordinates(png, 250)
 
             if min_bpx < min_myox:
 
@@ -95,9 +106,16 @@ class ProcessMRI:
 
 
 if __name__ == '__main__':
-    path_to_nifti_images = '/home/mat/Pictures/LAX_UKBB'
-    output_path = '/home/mat/Pictures/LAX_UKBB_corr'
+    # LINUX
+    # path_to_nifti_images = '/home/mat/Pictures/LAX_UKBB'
+    # output_path = '/home/mat/Pictures/LAX_UKBB_corr'
+
+    # Windows
+    path_to_nifti_images = 'C:\Data\LAX_UKBB\corrected'
+    output_path = 'C:\Data\LAX_UKBB\corrected'
+
     pr = ProcessMRI(path_to_nifti_images, output_path)
-    pr.refine_images()
+    # pr.refine_images()
     # pr.set_path_to_png_images('/home/mat/Pictures/LAX_UKBB_corr')
     # pr.move_low_quality_images()
+    pr.resize_images(scaler=4)
