@@ -5,8 +5,12 @@ import numpy as np
 import glob
 from PIL import Image
 import pandas as pd
-from skimage import measure
-import imageio
+
+
+def _check_directory(directory):
+    if not os.path.isdir(directory):
+        os.mkdir(directory)
+    return directory
 
 
 class ConvertNIfTI2PNG:
@@ -51,11 +55,12 @@ class ConvertNIfTI2PNG:
 def save_nifti_images_info(path_to_nifti_images='', output_path='', image_info_file='Image_details.csv'):
 
     nifti_images_list = []
-    for n_file in glob.glob(os.path.join(path_to_nifti_images, '*')):
+    for n_file in glob.glob(os.path.join(path_to_nifti_images, '*.gz')):
         print(n_file)
         nif = ConvertNIfTI2PNG(path_to_nifti_images, output_path, n_file)
         nif_info = dict()
         nif_info['id'] = os.path.basename(n_file).split('.')[0]
+        print(nif.nifti.header['pixdim'])
         nif_info['voxel_size_height'] = nif.nifti.header['pixdim'][1]
         nif_info['voxel_size_width'] = nif.nifti.header['pixdim'][2]
         nif_info['dim_height'] = nif.nifti.header['dim'][1]
@@ -87,15 +92,15 @@ path_to_nifti_images = 'C:\Data\LAX_UKBB'
 output_path = 'C:\Data\LAX_UKBB\corrected'
 
 # ---Save image info
-# save_nifti_images_info(path_to_nifti_images, output_path)
+save_nifti_images_info(path_to_nifti_images, _check_directory(os.path.join(path_to_nifti_images, 'Images_info')))
 
 # ---Convert files
-for n_file in glob.glob(os.path.join(path_to_nifti_images, '*gz')):
-
-    print(n_file)
-    ven = ConvertNIfTI2PNG(path_to_nifti_images, output_path, n_file)
-    # ven.print_nifti_info()
-    # ven.show_nifti_image()
-    ven.save_nifti_image_as_png()
+# for n_file in glob.glob(os.path.join(path_to_nifti_images, '*gz')):
+#
+#     print(n_file)
+#     ven = ConvertNIfTI2PNG(path_to_nifti_images, output_path, n_file)
+#     # ven.print_nifti_info()
+#     # ven.show_nifti_image()
+#     ven.save_nifti_image_as_png()
 
 
