@@ -1,8 +1,7 @@
 import pydicom
 import os
 import shutil
-
-'\CA190027'
+import csv
 
 
 def _check_directory(directory):
@@ -18,6 +17,7 @@ def copy_2ds_sequences(path_to_dicom_folders):
     # folders = ['EG162528', 'EG183845', 'EM172205', 'EP173952', 'JP184628',
     # 'LS195554', 'MB194510', 'MM164245', 'MV162659']
     i = 0
+    patient_ids = []
     for (dirpath, dirnames, filenames) in os.walk(path_to_dicom_folders):
         pid = True
 
@@ -28,6 +28,7 @@ def copy_2ds_sequences(path_to_dicom_folders):
                 print(i)
                 print('Case: {}'.format(ds.PatientID))
                 print('Filename: {}'.format(os.path.split(dirpath)[-1]))
+                patient_ids.append(ds.PatientID)
                 pid = False
                 break
             # if ds.ImageType[6] == 'GEMS2DSTRAIN':
@@ -35,6 +36,10 @@ def copy_2ds_sequences(path_to_dicom_folders):
             #     two_ds_fol = _check_directory(os.path.join(two_ds_dir, os.path.split(dirpath)[-1]+'_2DS'))
             #     shutil.copy(os.path.join(dirpath, dicom_filename),
             #                 os.path.join(two_ds_fol, dicom_filename+'_2DS'))
+
+    with open(os.path.join(os.path.split(path_to_dicom_folders)[0], 'Patient_IDs.csv'), 'w', newline='') as myfile:
+        wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
+        wr.writerow(patient_ids)
 
 
 def remove_modified_dicoms(path_to_dicom_folders):
@@ -45,8 +50,9 @@ def remove_modified_dicoms(path_to_dicom_folders):
                 pass
 
 
-path_to_dicoms = 'D:\PREDICT-AF'
-path_to_dicoms2 = 'D:\PredictAF_nonanon\HTcopy\HT_done'
-ptd3 = r'D:\PredictAF_nonanon\ath_2_done\martinez_nieto\GEMS_IMG\2017_MAY\08\CM142217'
-copy_2ds_sequences(ptd3)
-# remove_modified_dicoms(path_to_dicoms2)
+if __name__ == '__main__':
+    path_to_dicoms = 'D:\PREDICT-AF'
+    path_to_dicoms2 = 'D:\PredictAF_nonanon\HTcopy\HT_done'
+    ptd3 = r'D:\PredictAF_nonanon\ath_2_done\martinez_nieto\GEMS_IMG\2017_MAY\08\CM142217'
+    copy_2ds_sequences(path_to_dicoms2)
+    # remove_modified_dicoms(path_to_dicoms2)

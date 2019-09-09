@@ -211,7 +211,7 @@ class Contour:
 
         return lv_ordered_contour
 
-    # -----WallThicknessMeasurements----------------------------------------------------------------------------------------
+    # -----WallThicknessMeasurements------------------------------------------------------------------------------------
     def _calculate_bidirectional_local_distance_matrix(self):
         bidirectional_local_distance = {}
         cost_matrix = cdist(np.array(self.endo_sorted_edge), np.array(self.epi_sorted_edge))
