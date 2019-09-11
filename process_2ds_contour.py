@@ -4,6 +4,7 @@ from read_dicom import _check_directory
 from shutil import move
 import glob
 import pandas as pd
+import matplotlib.pyplot as plt
 
 path_to_contours = r'D:\2DS_output'
 output_path = r'D:\2DS_output\parsed'
@@ -54,5 +55,9 @@ def parse_contour_data(_path):
 
 # organize_contours_in_folders(path_to_contours)
 # remove_atrial_strain_data(path_to_contours)
-parse_contour_data(path_to_contours)
+# parse_contour_data(path_to_contours)
 
+df = pd.read_csv(os.path.join(path_to_contours, 'H1CFQ904', 'H1CFQ904.csv'), header=0, index_col=0)
+print(df.loc[0])
+plt.plot(df['0x'], -df['0y'])
+plt.show()
