@@ -23,7 +23,7 @@ class Contour:
     def __init__(self, segmentations_path, output_path, image_info_file='', segmentation_cycle=None, s_sopid=None,
                  cycle_index=None, dimensions=None):
         self.segmentations_path = segmentations_path
-        self.output_path = self._check_directory(output_path)
+        self.output_path = check_directory(output_path)
         self.image_info_file = image_info_file
         self.segmentation_cycle = segmentation_cycle
         self.s_sopid = s_sopid
@@ -42,12 +42,6 @@ class Contour:
         self.is_lv_endo = True
         self.smoothing_resolution = 500
         self.distance_matrix = np.zeros(1)
-
-    @staticmethod
-    def _check_directory(directory):
-        if not os.path.isdir(directory):
-            os.mkdir(directory)
-        return directory
 
     @staticmethod
     def _pair_coordinates(edge):
@@ -176,7 +170,7 @@ class Contour:
         print('Fitting complete')
         fitted_points = [(p[0], p[1]) for p in fit]
 
-        return fitted_points
+        return fitted_points, border
 
     def _retrieve_voxel_size(self, segmentation_file):
 
@@ -256,17 +250,21 @@ class Contour:
                 self.gray_mask = imageio.imread(seg_file)
                 self.is_lv_endo = True
                 self.endo_sorted_edge = self._lv_edges()
-                self._scale_contours(seg_file)
-                self.endo_sorted_edge = self._fit_border_through_pixels()
-                self._save_results(basename(seg_file)[:-4])
+                # self._scale_contours(seg_file)
+                self.plot_mask_with_contour(None, self.endo_sorted_edge)
+                self.endo_sorted_edge, orig = self._fit_border_through_pixels()
+                self.plot_mask_with_contour(self.endo_sorted_edge)
+                # self._save_results(basename(seg_file)[:-4])
 
                 if calculate_wt:
-                    self.is_lv_endo = False
-                    self.epi_sorted_edge = self._lv_edges()
-                    self._scale_contours(seg_file)
-                    self.epi_sorted_edge = self._fit_border_through_pixels()
-                    self.plot_mask_with_contour(self.endo_sorted_edge, self.epi_sorted_edge)
+                    # self.is_lv_endo = False
+                    # self.epi_sorted_edge = self._lv_edges()
+                    # self._scale_contours(seg_file)
+                    # self.epi_sorted_edge, orig = self._fit_border_through_pixels()
+                    # self.plot_mask_with_contour(self.endo_sorted_edge, self.epi_sorted_edge)
+                    self.plot_mask_with_contour(self.endo_sorted_edge, orig)
                     bwt, mwt = self._calculate_wt()
+
                     self.plot_wt()
                     print('Basal maximum wt: {}, mid mean wt: {}'.format(bwt, mwt))
 
@@ -274,12 +272,12 @@ class Contour:
 
             print('length of the cycle: {}'.format(len(self.segmentation_cycle)))
             cycle_coords = []
-            self.endo_sorted_edge = self._lv_edges(self.segmentation_cycle[0])
+            self.endo_sorted_edge = self._lv_edges()
             prev_cont = self.endo_sorted_edge
 
             failed = 0
             for seg_img_i, seg_img in enumerate(self.segmentation_cycle):
-                self.endo_sorted_edge = self._lv_edges(seg_img)
+                self.endo_sorted_edge = self._lv_edges()
                 self.img_index = seg_img_i
 
                 if self._check_contour_quality(np.array(seg_img), prev_cont):
@@ -296,10 +294,10 @@ class Contour:
 
     # -----Saving-------------------------------------------------------------------------------------------------------
     def _save_results(self, basename_file):
-        out_dir = self._check_directory(os.path.join(self.output_path, 'Contour_tables'))
+        out_dir = check_directory(os.path.join(self.output_path, 'Contour_tables'))
         np.savetxt(os.path.join(out_dir, basename_file + '.csv'), self.endo_sorted_edge)
 
-        out_dir = self._check_directory(os.path.join(self.output_path, 'Edge_images'))
+        out_dir = check_directory(os.path.join(self.output_path, 'Edge_images'))
         plt.imshow(self.gray_mask)
         if self.endo_sorted_edge:
             plt.plot([x[0] for x in self.endo_sorted_edge], [y[1] for y in self.endo_sorted_edge], 'r--')
@@ -314,13 +312,13 @@ class Contour:
 
         plt.imshow(self.gray_mask, cmap='gray')
         if contour1 is not None:
-            xc = np.array([x[0] for x in self.endo_sorted_edge])
-            yc = np.array([y[1] for y in self.endo_sorted_edge])
+            xc = np.array([x[0] for x in contour1])
+            yc = np.array([y[1] for y in contour1])
             plt.plot(xc, yc, 'r.-')
 
         if contour2 is not None:
-            xc = np.array([x[0] for x in self.epi_sorted_edge])
-            yc = np.array([y[1] for y in self.epi_sorted_edge])
+            xc = np.array([x[0] for x in contour2])
+            yc = np.array([y[1] for y in contour2])
             plt.plot(xc, yc, 'b.-')
         plt.show()
         plt.clf()
@@ -440,9 +438,9 @@ if __name__ == '__main__':
     # segmentations_path = '/home/mat/Pictures/LAX_UKBB_corr'
     # output_path = '/home/mat/Pictures/LAX_UKBB_corr/contours'
     # WINDOWS
-    segmentations_path = 'C:\Data\LAX_UKBB\corrected'
-    output_path = 'C:\Data\LAX_UKBB\corrected\contours'
-    image_info_file = 'C:\Data\LAX_UKBB\Images_info\Image_details.csv'
+    segmentations_path = 'C:\Data\ProjectCurvature\LAX_UKBB\corrected'
+    output_path = 'C:\Data\ProjectCurvature\LAX_UKBB\corrected\contours'
+    image_info_file = 'C:\Data\ProjectCurvature\LAX_UKBB\Images_info\Image_details.csv'
 
     # cont = Contour(os.getcwd(), os.getcwd(), dimensions=(1, 1))
     cont = Contour(segmentations_path, output_path, image_info_file=image_info_file)

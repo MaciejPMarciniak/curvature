@@ -50,22 +50,98 @@ class Curvature:
         fig, _ = plt.subplots(figsize=(8, 7))
         _.plot(self.line[1:-1, 0], self.curvature, 'r-', lw=2)
         _.set_title('Corresponding Menger\'s curvature'.format(len(self.curvature)))
+        plt.show()
         fig.savefig(os.path.join('images', 'Curvature.png'))
         return _
 
 
+class GradientCurvature:
+
+    def __init__(self, trace, w_spacing=False):
+        self.trace = trace
+        self.w_spacing = w_spacing
+        self.curvature = None
+
+    def _get_spacing(self):
+
+        def cumulative_spacing(spacing):
+            cum_spac = np.zeros(len(spacing) + 1)
+            cum_spac[1:] = np.cumsum(spacing)
+            return cum_spac
+
+        x_spacing = cumulative_spacing(np.abs(np.diff(self.x_trace)))
+        y_spacing = cumulative_spacing(np.abs(np.diff(self.y_trace)))
+        spacing = np.sqrt(x_spacing ** 2 + y_spacing ** 2)
+
+        return spacing
+
+    def _get_gradients(self):
+        self.x_trace = [x[0] for x in self.trace]
+        self.y_trace = [y[1] for y in self.trace]
+
+        if self.w_spacing:
+            self.spacing = self._get_spacing()
+            x_prime = np.gradient(self.x_trace, self.spacing)
+            y_prime = np.gradient(self.y_trace, self.spacing)
+            x_bis = np.gradient(x_prime, self.spacing)
+            y_bis = np.gradient(y_prime, self.spacing)
+        else:
+            x_prime = np.gradient(self.x_trace)
+            y_prime = np.gradient(self.y_trace)
+            x_bis = np.gradient(x_prime)
+            y_bis = np.gradient(y_prime)
+
+        # plt.subplot(211)
+        # plt.plot(x_prime)
+        # plt.plot(y_prime)
+        # plt.subplot(212)
+        # plt.plot(x_bis)
+        # plt.plot(y_bis)
+        # plt.show()
+        return x_prime, y_prime, x_bis, y_bis
+
+    def calculate_curvature(self):
+        x_prime, y_prime, x_bis, y_bis = self._get_gradients()
+        curvature = x_prime*y_bis/((x_prime ** 2 + y_prime ** 2) ** (3/2)) - \
+                    y_prime*x_bis/((x_prime ** 2 + y_prime ** 2) ** (3/2))
+        self.curvature = curvature
+        return curvature
+
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+
 if __name__ == '__main__':
 
-    x = np.linspace(-5, 5, 1001)
-    y = (x ** 2)
+    k = 1000
+
+    x = np.linspace(-5, 5, k+1)
+
+    # y = sigmoid(x)
+    y = x ** 3
+    # y = np.sin(x)
+    # y = np.sqrt(x)
+
     xy = list(zip(x, y))  # list of points in 2D space
+
+    curva = GradientCurvature(xy)
+    curva.calculate_curvature()
 
     curv = Curvature(line=xy)
     curv.calculate_curvature(gap=0)
+    curv.curvature = np.hstack((curv.curvature[-1], curv.curvature[:-1], ))
 
-    print('Curvature values (first 10 points): {}'.format(curv.curvature[:10]))
-    print('Curvature values (10 middle points): {}'.format(curv.curvature[int(len(x)/2-5):int(len(x)/2+5)]))
+    print(k)
+    print('menger')
     print('Maximum curvature: {}'.format(max(curv.curvature)))
     print('Minimum curvature: {}'.format(min(curv.curvature)))
 
-    curv.plot_curvature()
+    print('no spacing')
+    print('Maximum curvature: {}'.format(np.max(curva.curvature)))
+    print('Minimum curvature: {}'.format(np.min(curva.curvature)))
+
+    plt.plot(-curv.curvature, 'd-', label='menger')
+    plt.plot(curva.curvature, 'g.-', label='no spacing')
+    plt.legend()
+    plt.show()
