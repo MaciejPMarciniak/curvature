@@ -2,6 +2,7 @@ import numpy as np
 import os
 import warnings
 import matplotlib.pyplot as plt
+import time
 
 
 class Curvature:
@@ -62,34 +63,15 @@ class GradientCurvature:
         self.w_spacing = w_spacing
         self.curvature = None
 
-    def _get_spacing(self):
-
-        def cumulative_spacing(spacing):
-            cum_spac = np.zeros(len(spacing) + 1)
-            cum_spac[1:] = np.cumsum(spacing)
-            return cum_spac
-
-        x_spacing = cumulative_spacing(np.abs(np.diff(self.x_trace)))
-        y_spacing = cumulative_spacing(np.abs(np.diff(self.y_trace)))
-        spacing = np.sqrt(x_spacing ** 2 + y_spacing ** 2)
-
-        return spacing
-
     def _get_gradients(self):
         self.x_trace = [x[0] for x in self.trace]
         self.y_trace = [y[1] for y in self.trace]
 
-        if self.w_spacing:
-            self.spacing = self._get_spacing()
-            x_prime = np.gradient(self.x_trace, self.spacing)
-            y_prime = np.gradient(self.y_trace, self.spacing)
-            x_bis = np.gradient(x_prime, self.spacing)
-            y_bis = np.gradient(y_prime, self.spacing)
-        else:
-            x_prime = np.gradient(self.x_trace)
-            y_prime = np.gradient(self.y_trace)
-            x_bis = np.gradient(x_prime)
-            y_bis = np.gradient(y_prime)
+        x_prime = np.gradient(self.x_trace)
+        y_prime = np.gradient(self.y_trace)
+        x_bis = np.gradient(x_prime)
+        y_bis = np.gradient(y_prime)
+
 
         # plt.subplot(211)
         # plt.plot(x_prime)
@@ -97,7 +79,6 @@ class GradientCurvature:
         # plt.subplot(212)
         # plt.plot(x_bis)
         # plt.plot(y_bis)
-        # plt.show()
         return x_prime, y_prime, x_bis, y_bis
 
     def calculate_curvature(self):
@@ -114,7 +95,7 @@ def sigmoid(x):
 
 if __name__ == '__main__':
 
-    k = 1000
+    k = 10000
 
     x = np.linspace(-5, 5, k+1)
 
@@ -126,10 +107,15 @@ if __name__ == '__main__':
     xy = list(zip(x, y))  # list of points in 2D space
 
     curva = GradientCurvature(xy)
+    start = time.time()
     curva.calculate_curvature()
-
+    end = time.time()
+    print(end-start)
     curv = Curvature(line=xy)
+    start = time.time()
     curv.calculate_curvature(gap=0)
+    end = time.time()
+    print(end - start)
     curv.curvature = np.hstack((curv.curvature[-1], curv.curvature[:-1], ))
 
     print(k)

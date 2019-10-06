@@ -148,6 +148,13 @@ class Contour:
         False -> lv_epi_sorted_edge
         :return: list of points of the smooth contour, with resolution controlled by smoothing_resolution
         """
+        # Add paths with relevant scripts and functions
+        matlab_code_path = os.path.join('C:/', 'Code', 'computationalcardiacanatomy')
+        pth = [x[0] for x in os.walk(os.path.join(matlab_code_path, 'Accesory', 'MeshHandling'))]
+        pth.append(os.path.join(matlab_code_path, 'Personalization', 'CoreFunctions'))
+        pth.append(os.path.join(matlab_code_path, 'Personalization', 'AccessoryFunctions'))
+        pth.append(os.path.join(matlab_code_path, 'Scripts'))
+
         if edge is not None:
             border = edge
         elif self.is_lv_endo:
@@ -158,12 +165,6 @@ class Contour:
 
         print('Fitting')
         oc = Oct2Py()
-        # Add paths with relevant scripts and functions
-        matlab_code_path = os.path.join('C:/', 'Code', 'computationalcardiacanatomy')
-        pth = [x[0] for x in os.walk(os.path.join(matlab_code_path, 'Accesory', 'MeshHandling'))]
-        pth.append(os.path.join(matlab_code_path, 'Personalization', 'CoreFunctions'))
-        pth.append(os.path.join(matlab_code_path, 'Personalization', 'AccessoryFunctions'))
-        pth.append(os.path.join('C:\Code', 'computationalcardiacanatomy', 'Scripts'))
         [oc.addpath(sub_pth) for sub_pth in pth]
         # Get smooth contour. 12 is the number of elements (why?)
         fit = oc.ScriptFitUltrasoundContour(border, 12, self.smoothing_resolution)

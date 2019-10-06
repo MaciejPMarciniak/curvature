@@ -3,17 +3,18 @@ import pandas as pd
 import glob
 import os
 import csv
+
 from itertools import combinations
-from scipy.interpolate import interp1d, Rbf, UnivariateSpline
-from scipy.signal import savgol_filter
-from curvature import Curvature
-from LV_edgedetection import Contour, check_directory
+from scipy.interpolate import Rbf
+from curvature import GradientCurvature
+from LV_edgedetection import check_directory
 from plotting import PlottingCurvature, PlottingDistributions
 
 
 class Trace:
 
-    def __init__(self, case_name, contours, interpolation_parameters=(), view='4C'):
+    def __init__(self, source_path, case_name, contours=None, interpolate=None, view='4C'):
+        self.source_path = source_path
         self.case_name = case_name
         self.view = view
         self.id = None
@@ -26,32 +27,36 @@ class Trace:
         self.mean_curvature_over_time = []
         self.apices = []
 
-        if contours is not None:
+        if contours is not None:  # Contours could be provided if coming directly from images and LV_edgedetection
             self.data = contours
             self.case_filename = case_name
-        else:
+        else:  # Normally, they are read from EchoPAC export
             self.case_filename = self.case_name.split('/')[-1][:-4]
             self.data = self._read_echopac_output()
-        self._interpolate_traces(trace_points_n=interpolation_parameters[0],
-                                 temporal_smoothing=interpolation_parameters[1])
-        self.biomarkers = pd.DataFrame(index=[self.case_name])
+
+        if interpolate is not None:
+            assert interpolate >= self.number_of_points, ('Number of points to interpolate is too low, must be at least'
+                                                          'the length of the underlying contour')
+            self._interpolate_traces(interpolate)
         self.get_curvature_per_frame()
         print('CURVATURE_CALCULATED')
         self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)
         self._find_ed_and_es_frame()
         self.find_apices()
+        self.biomarkers = pd.DataFrame(index=[self.case_name])
         self.get_biomarkers()
         print('BIOMARKERS OBTAINED')
 
     def _read_echopac_output(self):
-        with open(self.case_name) as f:
+        file_w_path = os.path.join(self.source_path, self.case_name)
+        with open(file_w_path) as f:
             for line in f:
                 if 'ID=' in line:
                     self.id = line.split('=')[1].strip('\n')
                     f.close()
                     break
 
-        data = pd.read_csv(filepath_or_buffer=self.case_name, sep=',', skiprows=10, header=None,
+        data = pd.read_csv(filepath_or_buffer=file_w_path, sep=',', skiprows=10, header=None,
                            delim_whitespace=False)
         data.dropna(axis=1, inplace=True)
         data = data.values
@@ -62,63 +67,54 @@ class Trace:
     def _plane_area(x, y):
         return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
+    @staticmethod
+    def _trace_length(x, y):
+        set1 = np.vstack([x[:-1], y[:-1]]).T
+        set2 = np.vstack([x[1:], y[1:]]).T
+        return np.sum([np.linalg.norm(a - b) for a, b in zip(set1, set2)])
+
+    @staticmethod
+    def get_normalized_curvature(curvature):
+        # Empirically established values. Useful for coloring, where values cannot be negative.
+        return [(single_curvature + 0.125) * 4 for single_curvature in curvature]
+
     def _find_ed_and_es_frame(self):
-        areas = np.zeros(self.number_of_frames)
-        for frame in range(self.number_of_frames):
+        areas = np.zeros(int(self.number_of_frames/2))  # Search only in the first half for ED
+        for frame in range(int(self.number_of_frames/2)):
             x, y = self.data[frame, ::2], self.data[frame, 1::2]
             areas[frame] = self._plane_area(x, y)
         self.es_frame, self.ed_frame = np.argmin(areas), np.argmax(areas)
 
-    def _interpolate_traces(self, trace_points_n=None, temporal_smoothing=False):
+    def _interpolate_traces(self, trace_points_n=None):
 
-        # TODO: make a similar function that reads 2Dstrain exports (np array instead of list of tuple, the
-        # TODO: same number of points in each frame
-
-        x_time_steps = np.arange(len(self.data))
-
-        if trace_points_n is None:
+        if trace_points_n is None:  # Only change the format of the data
             point_interpolated = np.zeros((len(self.data), len(self.data[0]) * 2))
-            for trace in x_time_steps:
+            for trace in range(self.data.shape[0]):  # number of frames
                 point_interpolated[trace, ::2] = [x[0] for x in self.data[trace]]
                 point_interpolated[trace, 1::2] = [y[1] for y in self.data[trace]]
-        else:
+        else:  # perform interpolation
             point_interpolated = np.zeros((len(self.data), trace_points_n * 2))
-            for trace in x_time_steps:
-                positions = np.arange(len(self.data[trace]))
-                points_target = np.linspace(0, len(self.data[trace]) - 1, trace_points_n)
+            for trace in range(self.data.shape[0]):  # number of frames
+                positions = np.arange(self.data.shape[1])  # strictly monotonic, equal to the number of points in trace
+                interpolation_target_n = np.linspace(0, len(self.data[trace]) - 1, trace_points_n)
+                # Radial basis function interpolation 'quintic': r**5 where r is the distance from the next point
+                # Smoothing is set to length of the input data
+                rbf_x = Rbf(positions, self.data[trace, ::2], smooth=len(positions), function='quintic')
+                rbf_y = Rbf(positions, self.data[trace, 1::2], smooth=len(positions), function='quintic')
+                # Interpolate based on the RBF model
+                point_interpolated[trace, ::2] = rbf_x(interpolation_target_n)
+                point_interpolated[trace, 1::2] = rbf_y(interpolation_target_n)
 
-                # Radial basis function interpolation
-                # 'quintic': r**5 where r is the distance from the next poiny
-                rbf_x = Rbf(positions, [x[0] for x in self.data[trace]], smooth=50, function='quintic')
-                rbf_y = Rbf(positions, [y[1] for y in self.data[trace]], smooth=50, function='quintic')
-
-                point_interpolated[trace, ::2] = rbf_x(points_target)
-                point_interpolated[trace, 1::2] = rbf_y(points_target)
-
-        if temporal_smoothing:
-            for point in range(point_interpolated.shape[1]):
-
-                # plt.plot(point_interpolated[:, point], label='original')
-                # single_trace = point_interpolated[:, point]
-                # su = np.arange(0, float(len(single_trace)))
-                # ft = UnivariateSpline(range(len(single_trace)), single_trace, s=len(single_trace)/10)
-                # point_interpolated[:, point] = ft(su)
-                point_interpolated[:, point] = savgol_filter(point_interpolated[:, point], 11,
-                                                             polyorder=5, mode='interp')
-                # plt.plot(point_interpolated[:, point], label='savgol')
-                # plt.plot(spline[:, point], label='spline')
-                # plt.legend()
-                # plt.show()
-                # plt.close()
-
-        self.number_of_frames, self.number_of_points = point_interpolated.shape
         self.data = point_interpolated
+        self.number_of_frames, self.number_of_points = self.data.shape  # adjust to interpolated data shape
+
+        return point_interpolated
 
     def get_curvature_per_frame(self):
-        for frame in range(self.number_of_frames):
-            xy = [[x, y] for x, y in zip(self.data[frame][::2], self.data[frame][1::2])]
-            curva = Curvature(line=xy)
-            self.ventricle_curvature.append(curva.calculate_curvature(gap=1))
+        for frame in range(self.number_of_frames):  # Points should be interpolated already
+            trace = np.array([[x, y] for x, y in zip(self.data[frame][::2], self.data[frame][1::2])])  # 2D data: x,y
+            curvature = GradientCurvature(trace=trace)
+            self.ventricle_curvature.append(curvature.calculate_curvature())
 
         self.ventricle_curvature = np.array(self.ventricle_curvature)
 
@@ -133,19 +129,14 @@ class Trace:
         values, counts = np.unique(self.apices, return_counts=True)
         self.apex = values[np.argmax(counts)]  # Lowest point in all frames
 
-    def get_normalized_curvature(self, curvature):
-        # Empirically established values. Useful for coloring, where values cannot be negative.
-        return [(single_curvature+0.125)*4 for single_curvature in curvature]
-
     def get_biomarkers(self):
 
         curv = pd.DataFrame(data=self.ventricle_curvature)
 
         if self.view == '2C':
             curv_min_col = curv.min(axis=0).idxmin()
-            curv_min_row = curv.min(axis=1).idxmin()
-            lower_bound = 0
-            upper_bound = len(curv.columns)
+            lower_bound = int(0.04 * len(curv.columns))
+            upper_bound = int(0.96 * len(curv.columns))
         else:
             _t = int(self.view == '4C')
             lower_bound = int(np.round((_t * 0.04 + (1 - _t) * 0.7) * len(curv.columns)))
@@ -154,30 +145,29 @@ class Trace:
             # id of the column (point number) with minimum value
             curv_min_col = curv.loc[:, lower_bound:upper_bound].min(axis=0).idxmin()
 
-            # id of the row (frame) with minimum value
-            curv_min_row = curv.loc[:, lower_bound:upper_bound].min(axis=1).idxmin()
-
-        curv_max_col = curv.loc[:, int(3/4*upper_bound):int(7/4*upper_bound)].max(axis=0).idxmax()
-
+        # Minimum values within the entire cycle
         self.biomarkers['min'] = curv.loc[:, lower_bound:upper_bound].min().min()
-        self.biomarkers['max'] = curv.loc[:, int(3/4*upper_bound):int(7/4*upper_bound)].max().max()
+        self.biomarkers['min_delta'] = np.abs(curv[curv_min_col].max() - self.biomarkers['min'])
+        # Average values in the cycle
         self.biomarkers['avg_min_basal_curv'] = curv.loc[:, lower_bound:upper_bound].mean().min()
         self.biomarkers['avg_avg_basal_curv'] = curv.loc[:, lower_bound:upper_bound].mean().mean()
-        self.biomarkers['min_delta'] = np.abs(curv[curv_min_col].max() - self.biomarkers['min'])
-        self.biomarkers['max_delta'] = np.abs(curv[curv_max_col].min() - self.biomarkers['max'])
-        self.biomarkers['amplitude_at_t'] = np.abs(curv.loc[curv_min_row].max() - self.biomarkers['min'])
+        # Minimum values at ED
+        self.biomarkers['min_ED'] = curv.loc[self.ed_frame, lower_bound:upper_bound].min()
+        self.biomarkers['min_delta_ED'] = np.abs(self.biomarkers.min_ED - self.biomarkers['min'])
 
         return self.biomarkers
 
 
 class Cohort:
 
-    def __init__(self, source_path='data', view='4C', output_path='data', indices_file='indices_all_cases.csv'):
+    def __init__(self, source_path='data', view='4C', output_path='data', indices_file='indices_all_cases.csv',
+                 interpolate_traces=None):
 
         self.view = view
         self.source_path = source_path
         self.output_path = check_directory(output_path)
         self.indices_file = indices_file
+        self.interpolate_traces = interpolate_traces
         self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
         self.files.sort()
 
@@ -191,14 +181,8 @@ class Cohort:
         self.view = view
         self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
         self.files.sort()
-        if not output_path=='':
+        if not output_path == '':
             self.output_path = check_directory(output_path)
-
-    # @staticmethod
-    # def _check_directory(directory):
-    #     if not os.path.isdir(directory):
-    #         os.mkdir(directory)
-    #     return directory
 
     def _try_get_data(self, data=False, master_table=False):
 
@@ -235,16 +219,12 @@ class Cohort:
         list_of_dfs = []
         for curv_file in self.files:
             print('case: {}'.format(curv_file))
-            ven = Trace(curv_file, view=self.view)
+            ven = Trace(self.source_path, case_name=curv_file, view=self.view, interpolate=self.interpolate_traces)
             list_of_dfs.append(ven.get_biomarkers())
 
         self.df_all_cases = pd.concat(list_of_dfs)
-        self.df_all_cases['min_index2'] = np.abs(self.df_all_cases['min_delta'] / self.df_all_cases['min'])
-        self.df_all_cases['min_index'] = np.abs(self.df_all_cases['min_delta'] * self.df_all_cases['min']) * 1000
-        self.df_all_cases['log_min_index'] = np.log(self.df_all_cases['min_index'])
-        self.df_all_cases['min_v_amp_index'] = self.df_all_cases['min_delta'] * self.df_all_cases['amplitude_at_t']*1000
-        self.df_all_cases['log_min_v_amp_index'] = np.log(self.df_all_cases['min_v_amp_index'])
-        self.df_all_cases['delta_ratio'] = self.df_all_cases['min_delta'] / self.df_all_cases['max_delta']
+        self.df_all_cases['min_index'] = np.abs(self.df_all_cases.min_delta * self.df_all_cases['min']) * 1000
+        self.df_all_cases['min_index_ED'] = np.abs(self.df_all_cases.min_delta_ED * self.df_all_cases.min_ED) * 1000
 
         if to_file:
             self.df_all_cases.to_csv(os.path.join(self.output_path, self.view, 'output_EDA', self.indices_file))
@@ -306,7 +286,7 @@ class Cohort:
             names = {}
             for curv_file in self.files:
                 print('case: {}'.format(curv_file))
-                ven = Trace(curv_file, view=self.view)
+                ven = Trace(self.source_path, case_name=curv_file, view=self.view, interpolate=self.interpolate_traces)
                 case_name = curv_file.split('/')[-1].split('.')[0]  # get case name without path and extension
                 names[case_name] = ven.id
             if to_file:
@@ -317,10 +297,10 @@ class Cohort:
 
     def save_curvatures(self):
 
-        _output_path = check_directory(os.path.join(self.output_path, self.view, 'output_curvature', 'curvatures'))
+        _output_path = check_directory(os.path.join(self.output_path, 'curvatures'))
 
         for case in self.files:
-            ven = Trace(case_name=case, view=self.view)
+            ven = Trace(self.source_path, case_name=case, view=self.view, interpolate=self.interpolate_traces)
             print(ven.case_filename)
             pd.DataFrame(ven.ventricle_curvature).to_csv(os.path.join(_output_path, ven.id+'.csv'))
 
@@ -366,7 +346,7 @@ class Cohort:
             _output_path = check_directory(os.path.join(self.output_path, self.view, 'output_curvature'))
 
         for case in self.files:
-            ven = Trace(case_name=case, view=self.view, interpolation_parameters=(500, False), contours=None)
+            ven = Trace(self.source_path, case_name=case, view=self.view, interpolate=self.interpolate_traces)
             print(ven.case_filename)
             print('Points: {}'.format(ven.number_of_points))
             plot_tool = PlottingCurvature(source=_source_path,
@@ -376,11 +356,6 @@ class Cohort:
                 plot_tool.plot_mean_curvature()
             else:
                 plot_tool.plot_all_frames(coloring_scheme=coloring_scheme)
-                # ven = Trace(case_name=case, view=self.view, interpolation_parameters=(500, 500),
-                # contours=None)
-                # plot_tool = PlottingCurvature(source=_source_path,
-                #                               output_path=_output_path,
-                #                               ventricle=ven)
                 plot_tool.plot_heatmap()
 
     def plot_distributions(self, plot_data=False, plot_master=False, table_name=None):
@@ -395,30 +370,40 @@ class Cohort:
 
 
 if __name__ == '__main__':
-
     # ------------------------------------------------------------------------------------------------------------------
-    # Cohort
-    source = os.path.join('home','mat','Python','data','curvature')
-    target_path = os.path.join('home','mat','Python','data','curvature')
+    # Cohort(windows)
+    source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'temptest')
+    target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'temptest_output')
+    for i, f in enumerate(os.listdir(source)):
+        if i < 9:
+            continue
+        case = f.split('_')[1]
+        print(case)
+        curv = Trace(source_path=source, case_name=f, interpolate=500)
 
-    representatives = ('RV_4C.CSV', 'CAS0214_4C.CSV', 'DPJMA0472.CSV')
+    # Cohort(linux)
+    # source = os.path.join('home','mat','Python','data','curvature')
+    # target_path = os.path.join('home','mat','Python','data','curvature')
 
-    for _view in ['4C']:
 
-        cohort = Cohort(source_path=source, view=_view, output_path=target_path)
-
-    cohort.plot_curvatures('asf')
-    cohort.save_curvatures()
-    cohort.plot_curvatures(coloring_scheme='curvature', plot_mean=False)
-    cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
-    cohort.print_names_and_ids(to_file=True)
-
-    _view = '4C'
-    case_name = os.path.join(source, _view, 'AFI0442_4C.CSV')
-    ven = Trace(case_name, view=_view)
-    plot_tool = PlottingCurvature(source=source, output_path=target_path, ventricle=ven)
-    plot_tool.plot_mean_curvature()
-
-    print(ven.number_of_points)
-    print(ven.number_of_frames)
+    # representatives = ('RV_4C.CSV', 'CAS0214_4C.CSV', 'DPJMA0472.CSV')
+    #
+    # for _view in ['4C']:
+    #
+    #     cohort = Cohort(source_path=source, view=_view, output_path=target_path)
+    #
+    # cohort.plot_curvatures('asf')
+    # cohort.save_curvatures()
+    # cohort.plot_curvatures(coloring_scheme='curvature', plot_mean=False)
+    # cohort.plot_distributions(plot_data=True, table_name='_all_cases_with_labels.csv')
+    # cohort.print_names_and_ids(to_file=True)
+    #
+    # _view = '4C'
+    # case_name = os.path.join(source, _view, 'AFI0442_4C.CSV')
+    # ven = Trace(case_name, view=_view)
+    # plot_tool = PlottingCurvature(source=source, output_path=target_path, ventricle=ven)
+    # plot_tool.plot_mean_curvature()
+    #
+    # print(ven.number_of_points)
+    # print(ven.number_of_frames)
     # ------------------------------------------------------------------------------------------------------------------
