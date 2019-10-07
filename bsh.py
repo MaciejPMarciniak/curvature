@@ -195,7 +195,7 @@ class Cohort:
     def _try_get_data(self, data=False, master_table=False):
 
         if data:
-            _data_file = os.path.join(self.output_path, self.view, 'output_EDA', self.table_name)
+            _data_file = os.path.join(self.output_path, 'output_EDA', self.table_name)
 
             if os.path.isfile(_data_file):
                 self.df_all_cases = pd.read_csv(_data_file, header=0, index_col=0)
@@ -214,7 +214,8 @@ class Cohort:
             if not os.path.exists(_master_table_file):
                 self._build_master_table(to_file=True)
 
-            self.biomarkers = list(set([col[3:] for col in self.df_master.columns]))
+            if self.view is not None:
+                self.biomarkers = list(set([col[3:] for col in self.df_master.columns]))
 
         if 'label' in self.biomarkers:
             self.biomarkers.remove('label')
@@ -231,21 +232,22 @@ class Cohort:
             list_of_dfs.append(ven.get_biomarkers())
 
         self.df_all_cases = pd.concat(list_of_dfs)
-        self.df_all_cases['min_index'] = np.abs(self.df_all_cases.min_delta * self.df_all_cases['min']) * 1000
-        self.df_all_cases['min_index_ED'] = np.abs(self.df_all_cases.min_delta_ED * self.df_all_cases.min_ED) * 1000
+        self.df_all_cases['min_index'] = np.abs(self.df_all_cases.min_delta * self.df_all_cases['min'])
+        self.df_all_cases['min_index_ED'] = np.abs(self.df_all_cases.min_delta_ED * self.df_all_cases.min_ED)
 
         if to_file:
             data_set_output_dir = check_directory(os.path.join(self.output_path, 'output_EDA'))
             self.df_all_cases.to_csv(os.path.join(data_set_output_dir, self.indices_file))
 
-    def _build_master_table(self, to_file=False, views=('4C', '3C', '2C')):
+    def _build_master_table(self, to_file=False, views=(None,)):
 
         list_of_dfs = []
 
         for view in views:
             self._set_paths_and_files(view=view, output_path=self.output_path)
             self._try_get_data(data=True)
-            self.df_all_cases.columns = [self.view + '_' + col for col in self.df_all_cases.columns]
+            self.df_all_cases.columns = [(self.view if self.view is not None else '')
+                                         + '_' + col for col in self.df_all_cases.columns]
             list_of_dfs.append(self.df_all_cases)
 
         self.df_master = list_of_dfs[0]
@@ -324,6 +326,7 @@ class Cohort:
             self.table_name = 'master_table_with_labels.csv'
             self._try_get_data(master_table=True)
 
+        print(self.df_master)
         df_stats = pd.DataFrame()
         for lab in range(3):
             df_stats['mean_'+str(lab)] = self.df_master[self.df_master['label'] == lab].mean()
@@ -388,8 +391,9 @@ if __name__ == '__main__':
     cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
     # cohort.save_curvatures()  # works!!!
     # cohort.save_indices()  # works!!!
-    # cohort.plot_curvatures()
-    cohort.print_names_and_ids(to_file=True, views=(None,))
+    # cohort.plot_curvatures()  # works!!!
+    # cohort.print_names_and_ids(to_file=True, views=(None,))  # works!!!
+    cohort.save_statistics()
 
     # for i, f in enumerate(os.listdir(source)):
     #

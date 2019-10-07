@@ -58,9 +58,10 @@ class Curvature:
 
 class GradientCurvature:
 
-    def __init__(self, trace, w_spacing=False):
+    def __init__(self, trace, w_spacing=False, plot_derivatives=False):
         self.trace = trace
         self.w_spacing = w_spacing
+        self.plot_derivatives = plot_derivatives
         self.curvature = None
 
     def _get_gradients(self):
@@ -72,33 +73,34 @@ class GradientCurvature:
         x_bis = np.gradient(x_prime)
         y_bis = np.gradient(y_prime)
 
-        # plt.subplot(211)
-        # plt.plot(x_prime)
-        # plt.plot(y_prime)
-        # plt.subplot(212)
-        # plt.plot(x_bis)
-        # plt.plot(y_bis)
+        if self.plot_derivatives:
+            plt.subplot(211)
+            plt.plot(x_prime)
+            plt.plot(y_prime)
+            plt.subplot(212)
+            plt.plot(x_bis)
+            plt.plot(y_bis)
 
         return x_prime, y_prime, x_bis, y_bis
 
     def calculate_curvature(self):
         x_prime, y_prime, x_bis, y_bis = self._get_gradients()
-        curvature = x_prime*y_bis/((x_prime ** 2 + y_prime ** 2) ** (3/2)) - \
-                    y_prime*x_bis/((x_prime ** 2 + y_prime ** 2) ** (3/2))
+        curvature = x_prime * y_bis / ((x_prime ** 2 + y_prime ** 2) ** (3/2)) - \
+            y_prime * x_bis / ((x_prime ** 2 + y_prime ** 2) ** (3/2))  # Numerical trick to get accurate values
         self.curvature = curvature
         return curvature
 
 
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+def sigmoid(t):
+    return 1 / (1 + np.exp(-t))
 
 
 if __name__ == '__main__':
 
-    k = 10000
-
+    k = 10000  # Resolution
     x = np.linspace(-5, 5, k+1)
 
+    # ____Testing functions____
     # y = sigmoid(x)
     y = x ** 2
     # y = np.sin(x)
@@ -106,29 +108,31 @@ if __name__ == '__main__':
 
     xy = list(zip(x, y))  # list of points in 2D space
 
-    curva = GradientCurvature(xy)
+    curv1 = GradientCurvature(xy)
     start = time.time()
-    curva.calculate_curvature()
+    curv1.calculate_curvature()
     end = time.time()
-    print(end-start)
-    curv = Curvature(line=xy)
+    print('Gradient curvature execution time: {}'.format(end-start))
+
+    curv2 = Curvature(line=xy)
     start = time.time()
-    curv.calculate_curvature(gap=0)
+    curv2.calculate_curvature(gap=0)
     end = time.time()
-    print(end - start)
-    curv.curvature = np.hstack((curv.curvature[-1], curv.curvature[:-1], ))
-    curv.plot_curvature()
+    print('Menger curvature execution time: {}'.format(end - start))
+
+    curv2.curvature = np.hstack((curv2.curvature[-1], curv2.curvature[:-1], ))
+    curv2.plot_curvature()
 
     print(k)
-    print('menger')
-    print('Maximum curvature: {}'.format(max(curv.curvature)))
-    print('Minimum curvature: {}'.format(min(curv.curvature)))
+    print('Menger')
+    print('Maximum curvature: {}'.format(max(curv2.curvature)))
+    print('Minimum curvature: {}'.format(min(curv2.curvature)))
 
-    print('no spacing')
-    print('Maximum curvature: {}'.format(np.max(curva.curvature)))
-    print('Minimum curvature: {}'.format(np.min(curva.curvature)))
+    print('Gradient')
+    print('Maximum curvature: {}'.format(np.max(curv1.curvature)))
+    print('Minimum curvature: {}'.format(np.min(curv1.curvature)))
 
-    plt.plot(-curv.curvature, 'd-', label='menger')
-    plt.plot(curva.curvature, 'g.-', label='no spacing')
+    plt.plot(-curv2.curvature, 'd-', label='Menger curvature')
+    plt.plot(curv1.curvature, 'g.-', label='Gradient curvature')
     plt.legend()
     plt.show()
