@@ -49,7 +49,7 @@ class Curvature:
     def plot_curvature(self):
 
         fig, _ = plt.subplots(figsize=(8, 7))
-        _.plot(self.line[1:-1, 0], self.curvature, 'r-', lw=2)
+        _.plot(self.line[1:-1, 0], np.abs(self.curvature), 'r-', lw=2)
         _.set_title('Corresponding Menger\'s curvature'.format(len(self.curvature)))
         plt.show()
         fig.savefig(os.path.join('images', 'Curvature.png'))
@@ -72,13 +72,13 @@ class GradientCurvature:
         x_bis = np.gradient(x_prime)
         y_bis = np.gradient(y_prime)
 
-
         # plt.subplot(211)
         # plt.plot(x_prime)
         # plt.plot(y_prime)
         # plt.subplot(212)
         # plt.plot(x_bis)
         # plt.plot(y_bis)
+
         return x_prime, y_prime, x_bis, y_bis
 
     def calculate_curvature(self):
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     x = np.linspace(-5, 5, k+1)
 
     # y = sigmoid(x)
-    y = x ** 3
+    y = x ** 2
     # y = np.sin(x)
     # y = np.sqrt(x)
 
@@ -117,6 +117,7 @@ if __name__ == '__main__':
     end = time.time()
     print(end - start)
     curv.curvature = np.hstack((curv.curvature[-1], curv.curvature[:-1], ))
+    curv.plot_curvature()
 
     print(k)
     print('menger')

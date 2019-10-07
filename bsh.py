@@ -3,6 +3,7 @@ import pandas as pd
 import glob
 import os
 import csv
+import matplotlib.pyplot as plt
 
 from itertools import combinations
 from scipy.interpolate import Rbf
@@ -43,7 +44,7 @@ class Trace:
         self.vc_normalized = self.get_normalized_curvature(self.ventricle_curvature)
         self._find_ed_and_es_frame()
         self.find_apices()
-        self.biomarkers = pd.DataFrame(index=[self.case_name])
+        self.biomarkers = pd.DataFrame(index=[self.id])
         self.get_biomarkers()
         print('BIOMARKERS OBTAINED')
 
@@ -53,13 +54,15 @@ class Trace:
             for line in f:
                 if 'ID=' in line:
                     self.id = line.split('=')[1].strip('\n')
+                    self.id += '_' + '_'.join(self.case_filename.split('_')[-3:])
+                    print(self.id)
                     f.close()
                     break
 
         data = pd.read_csv(filepath_or_buffer=file_w_path, sep=',', skiprows=10, header=None,
                            delim_whitespace=False)
         data.dropna(axis=1, inplace=True)
-        data = data.values
+        data = data.values / 100  # cm to m
         self.number_of_frames, self.number_of_points = data.shape[0], int(data.shape[1]/2)
         return data
 
@@ -76,7 +79,7 @@ class Trace:
     @staticmethod
     def get_normalized_curvature(curvature):
         # Empirically established values. Useful for coloring, where values cannot be negative.
-        return [(single_curvature + 0.125) * 4 for single_curvature in curvature]
+        return [(single_curvature + 7.5) / 15 for single_curvature in curvature]
 
     def _find_ed_and_es_frame(self):
         areas = np.zeros(int(self.number_of_frames/2))  # Search only in the first half for ED
@@ -95,8 +98,8 @@ class Trace:
         else:  # perform interpolation
             point_interpolated = np.zeros((len(self.data), trace_points_n * 2))
             for trace in range(self.data.shape[0]):  # number of frames
-                positions = np.arange(self.data.shape[1])  # strictly monotonic, equal to the number of points in trace
-                interpolation_target_n = np.linspace(0, len(self.data[trace]) - 1, trace_points_n)
+                positions = np.arange(int(self.data.shape[1]/2))  # strictly monotonic, number of points in single trace
+                interpolation_target_n = np.linspace(0, self.data.shape[1]/2 - 1, trace_points_n)
                 # Radial basis function interpolation 'quintic': r**5 where r is the distance from the next point
                 # Smoothing is set to length of the input data
                 rbf_x = Rbf(positions, self.data[trace, ::2], smooth=len(positions), function='quintic')
@@ -115,7 +118,9 @@ class Trace:
             trace = np.array([[x, y] for x, y in zip(self.data[frame][::2], self.data[frame][1::2])])  # 2D data: x,y
             curvature = GradientCurvature(trace=trace)
             self.ventricle_curvature.append(curvature.calculate_curvature())
-
+            # plt.figure()
+            # plt.plot(self.ventricle_curvature[-1])
+            # plt.show()
         self.ventricle_curvature = np.array(self.ventricle_curvature)
 
     def get_mean_curvature_over_time(self):
@@ -125,7 +130,7 @@ class Trace:
     def find_apices(self):
         for frame in range(self.number_of_frames):
             # self.apices.append(np.argmax(self.ventricle_curvature[frame]))  # Maximum curvature in a frame
-            self.apices.append(np.argmax(self.data[frame, 1::2]))  # Lowest point in given frame
+            self.apices.append(np.argmin(self.data[frame, 1::2]))  # Lowest point in given frame
         values, counts = np.unique(self.apices, return_counts=True)
         self.apex = values[np.argmax(counts)]  # Lowest point in all frames
 
@@ -168,7 +173,7 @@ class Cohort:
         self.output_path = check_directory(output_path)
         self.indices_file = indices_file
         self.interpolate_traces = interpolate_traces
-        self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
+        self.files = glob.glob(os.path.join(self.source_path, '*.CSV'))
         self.files.sort()
 
         self.df_all_cases = None
@@ -177,9 +182,12 @@ class Cohort:
         self.biomarkers = None
         self.table_name = None
 
-    def _set_paths_and_files(self, view='4C', output_path=''):
+    def _set_paths_and_files(self, view=None, output_path=''):
         self.view = view
-        self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
+        if view is not None:  # Read specified view data
+            self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
+        else:  # Read all CSVs in the source directory
+            self.files = glob.glob(os.path.join(self.source_path, '*.CSV'))
         self.files.sort()
         if not output_path == '':
             self.output_path = check_directory(output_path)
@@ -227,7 +235,8 @@ class Cohort:
         self.df_all_cases['min_index_ED'] = np.abs(self.df_all_cases.min_delta_ED * self.df_all_cases.min_ED) * 1000
 
         if to_file:
-            self.df_all_cases.to_csv(os.path.join(self.output_path, self.view, 'output_EDA', self.indices_file))
+            data_set_output_dir = check_directory(os.path.join(self.output_path, 'output_EDA'))
+            self.df_all_cases.to_csv(os.path.join(data_set_output_dir, self.indices_file))
 
     def _build_master_table(self, to_file=False, views=('4C', '3C', '2C')):
 
@@ -290,7 +299,8 @@ class Cohort:
                 case_name = curv_file.split('/')[-1].split('.')[0]  # get case name without path and extension
                 names[case_name] = ven.id
             if to_file:
-                with open(os.path.join(self.output_path, 'Names_IDs_' + self.view + '.csv'), 'w') as f:
+                with open(os.path.join(self.output_path,
+                                       'Names_IDs_' + (self.view if self.view is not None else '') + '.csv'), 'w') as f:
                     w = csv.DictWriter(f, names.keys())
                     w.writeheader()
                     w.writerow(names)
@@ -301,7 +311,7 @@ class Cohort:
 
         for case in self.files:
             ven = Trace(self.source_path, case_name=case, view=self.view, interpolate=self.interpolate_traces)
-            print(ven.case_filename)
+            print(ven.id)
             pd.DataFrame(ven.ventricle_curvature).to_csv(os.path.join(_output_path, ven.id+'.csv'))
 
     def save_indices(self):
@@ -341,13 +351,13 @@ class Cohort:
 
         _source_path = os.path.join(self.source_path, self.view)
         if plot_mean:
-            _output_path = check_directory(os.path.join(self.output_path, self.view, 'output_curvature', 'mean'))
+            _output_path = check_directory(os.path.join(self.output_path, 'output_curvature', 'mean'))
         else:
-            _output_path = check_directory(os.path.join(self.output_path, self.view, 'output_curvature'))
+            _output_path = check_directory(os.path.join(self.output_path, 'output_curvature'))
 
         for case in self.files:
             ven = Trace(self.source_path, case_name=case, view=self.view, interpolate=self.interpolate_traces)
-            print(ven.case_filename)
+            print(ven.id)
             print('Points: {}'.format(ven.number_of_points))
             plot_tool = PlottingCurvature(source=_source_path,
                                           output_path=_output_path,
@@ -374,12 +384,18 @@ if __name__ == '__main__':
     # Cohort(windows)
     source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'temptest')
     target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'temptest_output')
-    for i, f in enumerate(os.listdir(source)):
-        if i < 9:
-            continue
-        case = f.split('_')[1]
-        print(case)
-        curv = Trace(source_path=source, case_name=f, interpolate=500)
+
+    cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
+    # cohort.save_curvatures()  # works!!!
+    # cohort.save_indices()  # works!!!
+    # cohort.plot_curvatures()
+    cohort.print_names_and_ids(to_file=True, views=(None,))
+
+    # for i, f in enumerate(os.listdir(source)):
+    #
+    #     case = f.split('_')[1]
+    #     print(case)
+    #     curv = Trace(source_path=source, case_name=f, interpolate=500)
 
     # Cohort(linux)
     # source = os.path.join('home','mat','Python','data','curvature')

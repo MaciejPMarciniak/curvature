@@ -17,7 +17,7 @@ class PlottingCurvature:
         self.source = source
         self.output_path = output_path
         self.data = ventricle.data
-        self.id = ventricle.case_filename
+        self.id = ventricle.id
         self.number_of_frames = ventricle.number_of_frames
         self.curvature = ventricle.ventricle_curvature
         self.c_normalized = ventricle.vc_normalized
@@ -44,7 +44,8 @@ class PlottingCurvature:
 
     @staticmethod
     def _append_missing_curvature_values(curve):
-        return np.concatenate([[curve[0]], curve, [curve[-1]]])
+        # return np.concatenate([[curve[0]], curve, [curve[-1]]])  # not necessary with gradient curvature
+        return curve
 
     def plot_single_frame(self, frame_number=0):
 
@@ -140,16 +141,16 @@ class PlottingCurvature:
         fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
 
         ax0.set_title('LV trace, full cycle'.format(self.id))
-        ax0.set_ylim(-100, 20)
-        ax0.set_xlim(-40, 40)
+        ax0.set_ylim(-1.1, 0.1)
+        ax0.set_xlim(-0.5, 0.50)
         ax0.set_xlabel('Short axis $[mm]$')
         ax0.set_ylabel('Long axis $[mm]$')
 
         ax1.set_title('Geometric point-to-point curvature')
         ax1.axhline(y=0, c='k', ls='-.', lw=1)
-        ax1.axvline(x=20, c='k', ls='-.', lw=1)
-        ax1.axvline(x=150, c='k', ls='-.', lw=1)
-        ax1.set_ylim(-0.15, 0.30)
+        ax1.axvline(x=5, c='k', ls='-.', lw=1)
+        ax1.axvline(x=105, c='k', ls='-.', lw=1)
+        ax1.set_ylim(-15, 30)
 
         # ax1.vlines(self.ed_apex_id+1, 0, max(self.curvature[:, self.ed_apex_id]), color='k', linestyles='-.', lw=1)
         #  Added 1 to ed_apex_id because the plot is moved by one (due to lack of curvature at end points)
@@ -158,13 +159,13 @@ class PlottingCurvature:
 
         if coloring_scheme == 'curvature':
             xx, yy, _ = self._get_translated_element(self.ed_frame, self.ed_apex)
-            # yy *= -1
+            yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[self.ed_frame])
             ax0.plot(xx, yy, 'k--', lw=3)
             ax1.plot(curv, '--', c='black', lw=2)
 
             xx, yy, _ = self._get_translated_element(self.es_frame, self.ed_apex)
-            # yy *= -1
+            yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[self.es_frame])
             ax0.plot(xx, yy, 'k:', lw=3)
             ax1.plot(curv, ':', c='black', lw=2)
@@ -192,7 +193,7 @@ class PlottingCurvature:
         for frame_number in range(self.number_of_frames):
 
             xx, yy, _ = self._get_translated_element(frame_number, self.ed_apex)
-            # yy *= -1
+            yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[frame_number])
             norm_curv = self._append_missing_curvature_values(self.c_normalized[self.ed_frame])
             if coloring_scheme == 'curvature':
@@ -206,7 +207,7 @@ class PlottingCurvature:
 
                 points = np.array([np.linspace(0, len(curv)-1, len(curv)), curv]).T.reshape(-1, 1, 2)
                 segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                norm = plt.Normalize(-0.125, 0.125)  # Arbitrary values, seem to correspond to the ventricle image
+                norm = plt.Normalize(-12.5, 12.5)  # Arbitrary values, seem to correspond to the ventricle image
                 lc = LineCollection(segments, cmap='seismic', alpha=0.4, norm=norm)
                 lc.set_array(curv)
                 lc.set_linewidth(2)
@@ -224,7 +225,7 @@ class PlottingCurvature:
         ax0.legend(handles=legend_elements0, loc='lower left', title='Cardiac cycle')
         ax1.legend(handles=legend_elements1, loc='upper right', title='Curvature')
 
-        norm = mpl.colors.Normalize(vmin=-0.25, vmax=0.25)
+        norm = mpl.colors.Normalize(vmin=-10, vmax=10)
         cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.seismic)
         cmap.set_array([norm])
         fig.colorbar(cmap)
@@ -243,7 +244,7 @@ class PlottingCurvature:
                 self.curvature[:, point] = savgol_filter(self.curvature[:, point],
                                                          7, polyorder=5, mode='interp')
 
-        fig = sns.heatmap(self.curvature.T, vmax=0.125, vmin=-0.07, center=0, cmap='seismic')
+        fig = sns.heatmap(self.curvature.T, vmax=12.5, vmin=-7, center=0, cmap='seismic')
         fig.set_title('Curvature heatmap')
         apex_pos = int(self.curvature.shape[1] / 2)
         b_al_pos = self.curvature.shape[1] - 1
