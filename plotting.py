@@ -344,10 +344,13 @@ class PlottingDistributions:
             plt.show()
         self._save_plot(series1 + '_vs_' + series2 + '_' + kind + '.png', g)
 
-    def plot_with_labels(self, series1, series2, show=False):
+    def plot_with_labels(self, series1, series2, w_labels=True, show=False):
 
-        lm = sns.lmplot(x=series1, y=series2, data=self.df, hue='label', palette='bright',
-                        markers=['d', 'x', 'o']).fig
+        if w_labels:
+            lm = sns.lmplot(x=series1, y=series2, data=self.df, hue='label', palette='bright',
+                            markers=['d', 'x', 'o']).fig
+        else:
+            lm = sns.lmplot(x=series1, y=series2, data=self.df, palette='bright', x_ci='sd').fig
 
         lm.suptitle('Basal septal hypertrophy classification')
         sns.set()
@@ -355,7 +358,7 @@ class PlottingDistributions:
 
         if show:
             plt.show()
-        self._save_plot(series1 + '_vs_' + series2 + '_labeled.png', lm)
+        self._save_plot(series1.replace('/', '_') + '_vs_' + series2 + '_labeled.png', lm)
 
 
 if __name__ == '__main__':

@@ -58,9 +58,8 @@ class Curvature:
 
 class GradientCurvature:
 
-    def __init__(self, trace, w_spacing=False, plot_derivatives=False):
+    def __init__(self, trace, plot_derivatives=False):
         self.trace = trace
-        self.w_spacing = w_spacing
         self.plot_derivatives = plot_derivatives
         self.curvature = None
 

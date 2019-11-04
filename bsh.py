@@ -108,6 +108,12 @@ class Trace:
                 point_interpolated[trace, ::2] = rbf_x(interpolation_target_n)
                 point_interpolated[trace, 1::2] = rbf_y(interpolation_target_n)
 
+                # a = x[0] for x in self.data[trace])
+                plt.plot(self.data[trace][::2], -self.data[trace][1::2], '.-')
+                plt.plot(point_interpolated[trace][::2], -point_interpolated[trace][1::2], 'r')
+                plt.show()
+                exit()
+
         self.data = point_interpolated
         self.number_of_frames, self.number_of_points = self.data.shape  # adjust to interpolated data shape
 
@@ -158,7 +164,8 @@ class Trace:
         self.biomarkers['avg_avg_basal_curv'] = curv.loc[:, lower_bound:upper_bound].mean().mean()
         # Minimum values at ED
         self.biomarkers['min_ED'] = curv.loc[self.ed_frame, lower_bound:upper_bound].min()
-        self.biomarkers['min_delta_ED'] = np.abs(self.biomarkers.min_ED - self.biomarkers['min'])
+        self.biomarkers['min_delta_ED'] = self.biomarkers.min_ED - self.biomarkers['min']
+        self.biomarkers['avg_basal_ED'] = curv.loc[self.ed_frame, lower_bound:upper_bound].mean()
 
         return self.biomarkers
 
@@ -183,7 +190,7 @@ class Cohort:
         self.table_name = None
 
     def _set_paths_and_files(self, view=None, output_path=''):
-        self.view = view
+        # self.view = view
         if view is not None:  # Read specified view data
             self.files = glob.glob(os.path.join(self.source_path, self.view, '*.CSV'))
         else:  # Read all CSVs in the source directory
@@ -226,18 +233,28 @@ class Cohort:
     def _build_data_set(self, to_file=False):
 
         list_of_dfs = []
+        df_patient_data = pd.read_excel(os.path.join(patient_data_path, 'PREDICT-AF_PatientData_Full.xlsx'),
+                                        index_col='ID', header=0)
         for curv_file in self.files:
             print('case: {}'.format(curv_file))
             ven = Trace(self.source_path, case_name=curv_file, view=self.view, interpolate=self.interpolate_traces)
+            # biomarkers = ven.get_biomarkers()
             list_of_dfs.append(ven.get_biomarkers())
 
         self.df_all_cases = pd.concat(list_of_dfs)
+        self.df_all_cases.index.name = 'ID'
+        self.df_all_cases['patient_ID'] = self.df_all_cases.index.map({k: k.split('_')[0] for k
+                                                                       in self.df_all_cases.index})
+        self.df_all_cases = self.df_all_cases.join(df_patient_data.SB, how='outer', on='patient_ID')
+        self.df_all_cases = self.df_all_cases.set_index(['patient_ID', self.df_all_cases.index])
+
         self.df_all_cases['min_index'] = np.abs(self.df_all_cases.min_delta * self.df_all_cases['min'])
         self.df_all_cases['min_index_ED'] = np.abs(self.df_all_cases.min_delta_ED * self.df_all_cases.min_ED)
 
         if to_file:
             data_set_output_dir = check_directory(os.path.join(self.output_path, 'output_EDA'))
             self.df_all_cases.to_csv(os.path.join(data_set_output_dir, self.indices_file))
+            print('master table saved')
 
     def _build_master_table(self, to_file=False, views=(None,)):
 
@@ -246,15 +263,19 @@ class Cohort:
         for view in views:
             self._set_paths_and_files(view=view, output_path=self.output_path)
             self._try_get_data(data=True)
-            self.df_all_cases.columns = [(self.view if self.view is not None else '')
-                                         + '_' + col for col in self.df_all_cases.columns]
+            # self.df_all_cases.columns = [(self.view if self.view is not None else '')
+            #                              + '_' + col for col in self.df_all_cases.columns]
             list_of_dfs.append(self.df_all_cases)
 
         self.df_master = list_of_dfs[0]
         for df_i in range(1, len(list_of_dfs)):
             self.df_master = self.df_master.merge(list_of_dfs[df_i], right_index=True, left_index=True, sort=True)
+        self.df_master.index.names = [self.df_master.index.names[0], 'patient_ID_detail']
+        self.df_master.to_csv(os.path.join(self.output_path, 'master_table_full.csv'))
+
         if to_file:
-            self.df_master.to_csv(os.path.join(self.output_path, 'master_table.csv'))
+            df_min_ed = self.df_master.groupby(level=0).min_ED.min()
+            df_min_ed.to_csv(os.path.join(self.output_path, 'master_table.csv'))
 
     def _plot_master(self):
 
@@ -329,9 +350,9 @@ class Cohort:
         print(self.df_master)
         df_stats = pd.DataFrame()
         for lab in range(3):
-            df_stats['mean_'+str(lab)] = self.df_master[self.df_master['label'] == lab].mean()
+            df_stats['mean_'+str(lab)] = self.df_master[self.df_master['SB'] == lab].mean()
         for lab in range(3):
-            df_stats['std_' + str(lab)] = self.df_master[self.df_master['label'] == lab].std()
+            df_stats['std_' + str(lab)] = self.df_master[self.df_master['SB'] == lab].std()
         df_stats.to_csv(os.path.join(self.output_path, 'master_stats.csv'))
 
     def save_extemes(self, n=30):
@@ -385,15 +406,18 @@ class Cohort:
 if __name__ == '__main__':
     # ------------------------------------------------------------------------------------------------------------------
     # Cohort(windows)
-    source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'temptest')
-    target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'temptest_output')
+    patient_data_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'PatientData')
+    source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'EndoContours')
+    target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output')
 
     cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
+    ven = Trace(source, '2DS120_AARO0441_ANDREU AGULLO_21_09_2018_4CH_FULL_TRACE_ENDO_V1_D1_B.CSV', interpolate=500)
+
     # cohort.save_curvatures()  # works!!!
     # cohort.save_indices()  # works!!!
     # cohort.plot_curvatures()  # works!!!
     # cohort.print_names_and_ids(to_file=True, views=(None,))  # works!!!
-    cohort.save_statistics()
+    # cohort.save_statistics()  # works!!!
 
     # for i, f in enumerate(os.listdir(source)):
     #

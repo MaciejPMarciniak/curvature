@@ -83,15 +83,15 @@ def move_atrial_strain_files(path_to_dicom_folders, roi_folder_path):
     for roi_file in roi_files:
         try:
             roi_data = np.genfromtxt(os.path.join(roi_folder_path, roi_file), delimiter=',')
-            if roi_data[int(roi_data.shape[0]/2), 0] > np.mean((roi_data[0, 0], roi_data[-1, 0])):
+            # if roi_data[int(roi_data.shape[0]/2), 0] > np.mean((roi_data[0, 0], roi_data[-1, 0])):
                 # print(roi_file)
-                dicom_filename = roi_file.rsplit('_', 1)[0]
-                dicom_filepath = find(dicom_filename, path_to_dicom_folders)
-                if dicom_filepath is not None:
-                    print(dicom_filepath)
-                # print(os.path.join(os.path.split(path_to_dicom_folders)[0], '2DStrain_atrium'))
-                move(dicom_filepath,
-                     os.path.join(os.path.split(path_to_dicom_folders)[0], '2DStrain_atrium', dicom_filename))
+            dicom_filename = roi_file.rsplit('_', 1)[0]
+            dicom_filepath = find(dicom_filename, path_to_dicom_folders)
+            if dicom_filepath is not None:
+                print(dicom_filepath)
+            # print(os.path.join(os.path.split(path_to_dicom_folders)[0], '2DStrain_atrium'))
+            move(dicom_filepath,
+                 os.path.join(os.path.split(path_to_dicom_folders)[0], '2DStrain_atrium', dicom_filename))
         except IndexError:
             exit('Moving strain completed')
 
@@ -103,9 +103,9 @@ if __name__ == '__main__':
     path_to_dicoms3 = r'C:\Users\mm18\Downloads\PV002 Echo 1 - 3D volume exports'
     path_to_dicoms4 = r'C:\EchoPAC_PC\ARCHIVE\Export\GEMS_IMG\2019_SEP\16\_P131238'
 
-    move_atrial_strain_files(path_to_dicoms2, r'D:\2DS_ROI_ES_HT')
+    # move_atrial_strain_files(path_to_dicoms2, r'D:\2DS_ROI_ES_HT')
 
     # compute_gradient(img)
     # read_dicom(path_to_dicoms4)
-    # copy_2ds_sequences(path_to_dicoms)
+    copy_2ds_sequences(path_to_dicoms)
     # remove_modified_dicoms(path_to_dicoms2)

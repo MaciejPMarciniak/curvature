@@ -10,6 +10,7 @@ from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 import seaborn as sns
 from plotting import PlottingDistributions
+from LV_edgedetection import check_directory
 
 
 class StatAnalysis:
@@ -226,20 +227,217 @@ class StatAnalysis:
             plot_tool.plot_with_labels(pair[0], pair[1])
 
 
+class StrainAnalysis:
+
+    FACTORS_BASIC = [r'strain_avc_Basal Septal', r'strain_avc_Mid Septal', r'strain_avc_Apical Septal',
+                     'max_gls_before_avc', 'max_gls']
+    FACTORS_WITH_MW = ['GWI', 'MW_Basal Septal', 'MW_Mid Septal', 'MW_Apical Septal', 'PSS_Basal Septal',
+                       'PSS_Mid Septal', 'PSS_Apical Septal', 'strain_avc_Basal Septal', 'strain_avc_Mid Septal',
+                       'strain_avc_Apical Septal', 'max_gls_before_avc', 'max_gls']
+
+    def __init__(self, patient_data_path, curvature_results_path, output_path, measurements_filename,
+                 twodstrain_filename, patient_data_filename, curvature_filename, merged_data_filename):
+
+        self.patient_data_path = patient_data_path
+        self.curvature_results_path = curvature_results_path
+        self.output_path = output_path
+
+        self.measurements_filename = measurements_filename
+        self.twodstrain_filename = twodstrain_filename
+        self.patient_data_filename = patient_data_filename
+        self.curvature_filename = curvature_filename
+
+        self.df_meas = pd.read_excel(os.path.join(self.patient_data_path, self.measurements_filename),
+                                     index_col='ID', header=0)
+        self.df_2ds = pd.read_excel(os.path.join(self.patient_data_path, self.twodstrain_filename),
+                                    index_col='ID', header=0)
+        if os.path.isfile(os.path.join(self.output_path, merged_data_filename)):
+            self.df_comparison = pd.read_csv(os.path.join(self.output_path, merged_data_filename),
+                                             index_col='patient_ID', header=0)
+        else:
+            exit('Create merged dataset')
+        self.models = {}
+
+    # ---Processing and combining dataframes----------------------------------------------------------------------------
+
+    def get_min_ed_rows(self, to_file=False):
+        """
+        Find cases (index level = 0) where the end diastolic trace's curvature is the lowest. Used in case a single
+        case has a few views/strain measurements done.
+        :param to_file: Whether to save the result to a file.
+        """
+        df_curv_full = pd.read_csv(os.path.join(self.curvature_results_path, self.curvature_filename),
+                                   index_col=['patient_ID', 'patient_ID_detail'], header=0)
+        df_curv_full.dropna(inplace=True)
+
+        df_curv = df_curv_full.loc[df_curv_full.groupby(level=0).min_ED.idxmin().values]
+        df_curv.reset_index(level=1, inplace=True)
+
+        if to_file:
+            df_curv.to_csv(os.path.join(self.output_path, 'curv_min_ED.csv'))
+
+    def combine_measurements_2ds(self, to_file=False):
+        """
+        Combine information from 3 different sources: 2DStrain (parsed xml export), measurements of WT and curvature
+        indices.
+        :param to_file: Whether to save the result to a file.
+        """
+
+        exit('Run only if really necessary! If so, update RGM and RFNA (files in export, 1.11.2019')
+
+        relevant_columns = ['patient_ID_detail', 'min', 'min_delta', 'avg_min_basal_curv', 'avg_avg_basal_curv',
+                            'min_ED', 'min_delta_ED', 'avg_basal_ED', 'SB', 'min_index', 'min_index_ED',
+                            'strain_avc_Apical Lateral', 'strain_avc_Apical Septal', 'strain_avc_Basal Lateral',
+                            'strain_avc_Basal Septal', 'strain_avc_Mid Lateral', 'strain_avc_Mid Septal',
+                            'strain_min_Apical Lateral', 'strain_min_Apical Septal', 'strain_min_Basal Lateral',
+                            'strain_min_Basal Septal', 'strain_min_Mid Lateral', 'strain_min_Mid Septal',
+                            'max_gls_before_avc', 'max_gls', 'max_gls_time', r'IVSd (basal) PLAX', r'IVSd (mid) PLAX',
+                            r'PLAX basal/mid', r'IVSd (basal) 4C', r'IVSd (mid) 4C', r'4C basal/mid', 'SB_meas']
+
+        self.df_curv = pd.read_csv(os.path.join(self.output_path, 'curv_min_ED.csv'), header=0, index_col='patient_ID')
+
+        df_meas_2ds = self.df_curv.join(self.df_2ds, how='outer')  # no on= because it's joined on indexes
+        df_meas_2ds = df_meas_2ds.join(self.df_meas, how='outer', rsuffix='_meas')
+        df_meas_2ds = df_meas_2ds[relevant_columns]
+
+        if to_file:
+            df_meas_2ds.to_csv(os.path.join(self.output_path, 'Measurements_and_2Dstrain.csv'))
+
+    def plots_wt_and_curvature_vs_markers(self, save_figures=False):
+
+        plot_dir = check_directory(os.path.join(self.output_path, 'plots'))
+
+        x_labels = ['min_ED', 'avg_min_basal_curv', r'PLAX basal/mid', r'4C basal/mid', 'avg_basal_ED']
+
+        for x_label in x_labels:
+            for y_label in self.FACTORS_BASIC:
+
+                if x_label in ['PLAX basal_mid', '4C basal_mid']:
+                    plt.axvline(1.4, linestyle='--', c='k')
+                    self.df_comparison.plot(x=x_label, y=y_label, c='SB', kind='scatter', legend=True, colorbar=True,
+                                            cmap='winter', title='Relation of {} to {}'.format(y_label, x_label))
+                else:
+                    self.df_comparison.plot(x=x_label, y=y_label, c=x_label, kind='scatter', legend=True, colorbar=True,
+                                            cmap='autumn', title='Relation of {} to {}'.format(y_label, x_label))
+                if save_figures:
+                    plt.savefig(os.path.join(plot_dir, r'{} vs {} HTNs.png'.format(y_label, x_label.replace('/', '_'))))
+                else:
+                    plt.show()
+                plt.close()
+
+    def plot_curv_vs_wt(self, save_figures=False, w_reg=False):
+
+        plot_dir = check_directory(os.path.join(self.output_path, 'plots'))
+        x_labels = [r'PLAX basal/mid', r'4C basal/mid', 'IVSd (basal) PLAX', 'IVSd (mid) PLAX', 'IVSd (basal) 4C',
+                    'IVSd (mid) 4C']
+        y_labels = ['min_ED', 'avg_basal_ED', 'avg_min_basal_curv']
+
+        for x_label in x_labels:
+            for y_label in y_labels:
+                self.df_comparison.plot(x=x_label, y=y_label, c='SB', kind='scatter', legend=True, colorbar=True,
+                                        cmap='winter', title='Relation of {} to {}'.format(y_label, x_label))
+                means_x = self.df_comparison.groupby('SB')[x_label].mean()
+                means_y = self.df_comparison.groupby('SB')[y_label].mean()
+                plt.plot(means_x, means_y, 'kd')
+
+                if x_label in [r'PLAX basal/mid', r'4C basal/mid']:
+                    plt.axvline(1.4, linestyle='--', c='k')
+                if save_figures:
+                    plt.savefig(os.path.join(plot_dir, r'Meas {} vs {} HTNs.png'.format(y_label,
+                                                                                        x_label.replace('/', '_'))))
+                else:
+                    plt.show()
+                plt.close()
+
+        self.df_comparison.plot(x=r'PLAX basal/mid', y=r'4C basal/mid', c='avg_basal_ED', kind='scatter', legend=True,
+                            colorbar=True, cmap='autumn', title='Curvature value for different wt ratios')
+        plt.axvline(1.4, linestyle='--', c='k')
+        plt.axhline(1.4, linestyle='--', c='k')
+        if save_figures:
+            plt.savefig(os.path.join(plot_dir, r'Ratios_curvature.png'))
+        else:
+            plt.show()
+
+    def get_statistics(self, indices=()):
+
+        df_stats = pd.DataFrame()
+        print(self.df_comparison.columns)
+
+        for marker in self.FACTORS_BASIC:
+            df_stats['mean_'+marker] = self.df_comparison.groupby('SB')[marker].mean()
+            df_stats['sd_'+marker] = self.df_comparison.groupby('SB')[marker].std()
+
+        df_stats.to_csv(os.path.join(self.output_path, 'Simple_statistics.csv'))
+
+    def linear_regression_basic_factors(self, to_file=False, show_plots=False):
+        from sklearn.linear_model import LinearRegression
+        from sklearn.metrics import mean_squared_error, r2_score
+
+        markers = ['min', 'min_delta', 'avg_min_basal_curv', 'avg_avg_basal_curv', 'min_ED', 'min_delta_ED',
+                   'avg_basal_ED', 'min_index', 'min_index_ED', r'PLAX basal/mid', r'4C basal/mid']
+
+        list_results = []
+
+        for marker in markers:
+            for factor in self.FACTORS_BASIC:
+
+                x = self.df_comparison[marker].values.reshape(-1, 1)
+                y = self.df_comparison[factor].values.reshape(-1, 1)
+
+                lr = LinearRegression()
+                lr.fit(x, y)
+                y_pred = lr.predict(x)
+
+                dict_results = {'marker': marker, 'factor': factor, 'coefficients': lr.coef_, 'R2': r2_score(y, y_pred),
+                                'mse': mean_squared_error(y, y_pred)}
+                list_results.append(dict_results)
+
+                if show_plots:
+                    plots = PlottingDistributions(self.df_comparison, 'min',
+                                                  check_directory(os.path.join(self.output_path, 'plots')))
+                    plots.plot_with_labels(series1=marker, series2=factor, w_labels=False)
+
+        df_results = pd.DataFrame(list_results)
+
+        if to_file:
+            df_results.to_csv(os.path.join(self.output_path, 'Linear_regression_results.csv'))
+
+
 if __name__ == '__main__':
+
+    patient_data_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'PatientData')
+    curvature_results = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output')
+    output = check_directory(os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output', 'Statistics'))
+    measurements = 'PREDICT-AF_Measurements.xlsx'
+    twodstrain = 'PREDICT_AF_Strain_MW_220.xlsx'
+    curvature = 'master_table_full.csv'
+    patient_info = 'PREDICT-AF_PatientData_Full.xlsx'
+    merged_data = 'Measurements_and_2Dstrain.csv'
+
+    anal = StrainAnalysis(patient_data_path, curvature_results, output, measurements, twodstrain, patient_info,
+                          curvature, merged_data)
+
+    # anal.get_min_ed_rows(to_file=True)
+    # anal.combine_measurements_2ds(True)
+    # anal.plots_wt_and_curvature_vs_markers(True)
+    # anal.plot_curv_vs_wt(True)
+    # anal.get_statistics()
+    anal.linear_regression_basic_factors(False, show_plots=True)
+
+    # STATANALYSIS
 
     # source = os.path.join('c:/', 'Data', 'Pickles', '_Output', 'Final', 'analysis')
     # datafile = 'biomarkers_proper_scale.csv'
 
-    source = os.path.join('c:/', 'Data', 'Pickles', '_Output', 'Final')
-    datafile = 'all_biomarkers.csv'
-    output = source
+    # source = os.path.join('c:/', 'Data', 'Pickles', '_Output', 'Final')
+    # datafile = 'all_biomarkers.csv'
+    # output = source
 
-    anal = StatAnalysis(input_path=source, output_path=output, data_filename=datafile)
-    anal.read_dataframe('Patient_ID')
+    # anal = StatAnalysis(input_path=source, output_path=output, data_filename=datafile)
+    # anal.read_dataframe('Patient_ID')
     # Preprocessing
     # anal.describe_quality_assessment()
-    group_anal = anal.get_df_pre_processing(print=True)
+    # group_anal = anal.get_df_pre_processing(print=True)
     # group_anal.to_csv(os.path.join(output, 'analysis', 'biomarkers_proper_scale.csv'))
 
     # Analysis
