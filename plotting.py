@@ -350,9 +350,9 @@ class PlottingDistributions:
             lm = sns.lmplot(x=series1, y=series2, data=self.df, hue='label', palette='bright',
                             markers=['d', 'x', 'o']).fig
         else:
-            lm = sns.lmplot(x=series1, y=series2, data=self.df, palette='bright', x_ci='sd').fig
+            lm = sns.lmplot(x=series1, y=series2, data=self.df, hue='SB', robust=True, ci=95).fig
 
-        lm.suptitle('Basal septal hypertrophy classification')
+        lm.suptitle('Hypertensive cohort')
         sns.set()
         plt.tight_layout()
 

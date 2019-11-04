@@ -373,8 +373,7 @@ class StrainAnalysis:
         from sklearn.linear_model import LinearRegression
         from sklearn.metrics import mean_squared_error, r2_score
 
-        markers = ['min', 'min_delta', 'avg_min_basal_curv', 'avg_avg_basal_curv', 'min_ED', 'min_delta_ED',
-                   'avg_basal_ED', 'min_index', 'min_index_ED', r'PLAX basal/mid', r'4C basal/mid']
+        markers = ['avg_avg_basal_curv', 'min_ED', 'avg_basal_ED', r'PLAX basal/mid', r'4C basal/mid']
 
         list_results = []
 

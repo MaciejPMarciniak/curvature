@@ -22,6 +22,7 @@ def copy_2ds_sequences(path_to_dicom_folders):
     patient_ids = []
     patient_files = []
 
+    skipped = 0
     for dirpath, dirnames, filenames in os.walk(path_to_dicom_folders):
         pid = True
 
@@ -32,16 +33,24 @@ def copy_2ds_sequences(path_to_dicom_folders):
                 print(i)
                 print('Case: {}'.format(ds.PatientID))
                 print('Filename: {}'.format(os.path.split(dirpath)[-1]))
+                print(ds.ImageType)
                 patient_ids.append(ds.PatientID)
                 patient_files.append(dirpath)
                 pid = False
 
-            if ds.ImageType[6] == 'GEMS2DSTRAIN':
-                print(dicom_filename)
-                two_ds_fol = _check_directory(os.path.join(two_ds_dir, ds.PatientID))
-                shutil.copy(os.path.join(dirpath, dicom_filename),
-                            os.path.join(two_ds_fol, dicom_filename+'_2DS'))
-
+            try:
+                if ds.ImageType[6] == 'GEMS2DSTRAIN':
+                    print(dicom_filename)
+                    print(ds.ImageType)
+                    two_ds_fol = _check_directory(os.path.join(two_ds_dir, ds.PatientID))
+                    shutil.copy(os.path.join(dirpath, dicom_filename),
+                                os.path.join(two_ds_fol, dicom_filename+'_2DS'))
+            except IndexError:
+                skipped += 1
+                print(ds.ImageType)
+                print('missing ImageType index, skipping')
+                continue
+    print('skipped: {}'.format(skipped))
     with open(os.path.join(os.path.split(path_to_dicom_folders)[0], 'Patient_IDs.csv'), 'w', newline='') as myfile:
         wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
         wr.writerow(patient_ids)
@@ -98,7 +107,7 @@ def move_atrial_strain_files(path_to_dicom_folders, roi_folder_path):
 
 if __name__ == '__main__':
     path_to_dicoms  = r'D:\PredictAF_nonanon\HTcopy\HT_done'
-    path_to_dicoms2 = r'D:\PredictAF_nonanon\HTcopy\2DStrain'
+    path_to_dicoms2 = r'G:\HospitalClinic\AduHeart-DICOM'
     path_to_dicoms_test = r'F:\ABC0455'
     path_to_dicoms3 = r'C:\Users\mm18\Downloads\PV002 Echo 1 - 3D volume exports'
     path_to_dicoms4 = r'C:\EchoPAC_PC\ARCHIVE\Export\GEMS_IMG\2019_SEP\16\_P131238'
@@ -107,5 +116,5 @@ if __name__ == '__main__':
 
     # compute_gradient(img)
     # read_dicom(path_to_dicoms4)
-    copy_2ds_sequences(path_to_dicoms)
+    copy_2ds_sequences(path_to_dicoms2)
     # remove_modified_dicoms(path_to_dicoms2)
