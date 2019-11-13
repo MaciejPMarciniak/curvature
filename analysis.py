@@ -254,6 +254,8 @@ class StrainAnalysis:
         if os.path.isfile(os.path.join(self.output_path, merged_data_filename)):
             self.df_comparison = pd.read_csv(os.path.join(self.output_path, merged_data_filename),
                                              index_col='patient_ID', header=0)
+            self.df_comparison['curv_threshold'] = (self.df_comparison.avg_basal_ED < -0.9).astype(int) + 1
+
         else:
             exit('Create merged dataset')
         self.models = {}
@@ -332,27 +334,31 @@ class StrainAnalysis:
                     'IVSd (mid) 4C']
         y_labels = ['min_ED', 'avg_basal_ED', 'avg_min_basal_curv']
 
-        for x_label in x_labels:
-            for y_label in y_labels:
-                self.df_comparison.plot(x=x_label, y=y_label, c='SB', kind='scatter', legend=True, colorbar=True,
-                                        cmap='winter', title='Relation of {} to {}'.format(y_label, x_label))
-                means_x = self.df_comparison.groupby('SB')[x_label].mean()
-                means_y = self.df_comparison.groupby('SB')[y_label].mean()
-                plt.plot(means_x, means_y, 'kd')
+        # for x_label in x_labels:
+        #     for y_label in y_labels:
+        #         self.df_comparison.plot(x=x_label, y=y_label, c='SB', kind='scatter', legend=True, colorbar=True,
+        #                                 cmap='winter', title='Relation of {} to {}'.format(y_label, x_label))
+        #         means_x = self.df_comparison.groupby('SB')[x_label].mean()
+        #         means_y = self.df_comparison.groupby('SB')[y_label].mean()
+        #         plt.plot(means_x, means_y, 'kd')
+        #
+        #         if x_label in [r'PLAX basal/mid', r'4C basal/mid']:
+        #             plt.axvline(1.4, linestyle='--', c='k')
+        #         if save_figures:
+        #             plt.savefig(os.path.join(plot_dir, r'Meas {} vs {} HTNs.png'.format(y_label,
+        #                                                                                 x_label.replace('/', '_'))))
+        #         else:
+        #             plt.show()
+        #         plt.close()
 
-                if x_label in [r'PLAX basal/mid', r'4C basal/mid']:
-                    plt.axvline(1.4, linestyle='--', c='k')
-                if save_figures:
-                    plt.savefig(os.path.join(plot_dir, r'Meas {} vs {} HTNs.png'.format(y_label,
-                                                                                        x_label.replace('/', '_'))))
-                else:
-                    plt.show()
-                plt.close()
-
-        self.df_comparison.plot(x=r'PLAX basal/mid', y=r'4C basal/mid', c='avg_basal_ED', kind='scatter', legend=True,
-                            colorbar=True, cmap='autumn', title='Curvature value for different wt ratios')
-        plt.axvline(1.4, linestyle='--', c='k')
-        plt.axhline(1.4, linestyle='--', c='k')
+        print('Curvature below -1: {}'.format(self.df_comparison.curv_threshold.sum()))
+        print('4C above 1.4: {}'.format((self.df_comparison['4C basal/mid'] > 1.4).sum()))
+        print('PLAX above 1.4: {}'.format((self.df_comparison['PLAX basal/mid'] > 1.4).sum()))
+        print('SB cases: {}'.format((self.df_comparison.SB > 1).sum()))
+        self.df_comparison.plot(x=r'PLAX basal/mid', y=r'4C basal/mid', c='curv_threshold', kind='scatter', legend=True,
+                                colorbar=True, cmap='winter', title='Curvature value for different wt ratios')
+        plt.axvline(1.4, ymax=0.44, linestyle='--', c='k')
+        plt.axhline(1.4, xmax=0.43, linestyle='--', c='k')
         if save_figures:
             plt.savefig(os.path.join(plot_dir, r'Ratios_curvature.png'))
         else:
@@ -364,9 +370,10 @@ class StrainAnalysis:
         print(self.df_comparison.columns)
 
         for marker in self.FACTORS_BASIC:
-            df_stats['mean_'+marker] = self.df_comparison.groupby('SB')[marker].mean()
-            df_stats['sd_'+marker] = self.df_comparison.groupby('SB')[marker].std()
-
+            df_stats['sb_mean_'+marker] = self.df_comparison.groupby('SB')[marker].mean()
+            df_stats['sb_sd_'+marker] = self.df_comparison.groupby('SB')[marker].std()
+            df_stats['curv_mean_'+marker] = self.df_comparison.groupby('curv_threshold')[marker].mean()
+            df_stats['curv_sd_' + marker] = self.df_comparison.groupby('curv_threshold')[marker].std()
         df_stats.to_csv(os.path.join(self.output_path, 'Simple_statistics.csv'))
 
     def linear_regression_basic_factors(self, to_file=False, show_plots=False):
@@ -420,8 +427,8 @@ if __name__ == '__main__':
     # anal.combine_measurements_2ds(True)
     # anal.plots_wt_and_curvature_vs_markers(True)
     # anal.plot_curv_vs_wt(True)
-    # anal.get_statistics()
-    anal.linear_regression_basic_factors(False, show_plots=True)
+    anal.get_statistics()
+    # anal.linear_regression_basic_factors(False, show_plots=True)
 
     # STATANALYSIS
 

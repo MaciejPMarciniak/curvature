@@ -62,7 +62,7 @@ class Trace:
         data = pd.read_csv(filepath_or_buffer=file_w_path, sep=',', skiprows=10, header=None,
                            delim_whitespace=False)
         data.dropna(axis=1, inplace=True)
-        data = data.values / 100  # cm to m
+        data = data.values / 10  # mm to cm. Original values are given in millimeters.
         self.number_of_frames, self.number_of_points = data.shape[0], int(data.shape[1]/2)
         return data
 
@@ -79,7 +79,7 @@ class Trace:
     @staticmethod
     def get_normalized_curvature(curvature):
         # Empirically established values. Useful for coloring, where values cannot be negative.
-        return [(single_curvature + 7.5) / 15 for single_curvature in curvature]
+        return [(single_curvature + 1.5) / 3 for single_curvature in curvature]
 
     def _find_ed_and_es_frame(self):
         areas = np.zeros(int(self.number_of_frames/2))  # Search only in the first half for ED
@@ -109,10 +109,10 @@ class Trace:
                 point_interpolated[trace, 1::2] = rbf_y(interpolation_target_n)
 
                 # a = x[0] for x in self.data[trace])
-                plt.plot(self.data[trace][::2], -self.data[trace][1::2], '.-')
-                plt.plot(point_interpolated[trace][::2], -point_interpolated[trace][1::2], 'r')
-                plt.show()
-                exit()
+                # plt.plot(self.data[trace][::2], -self.data[trace][1::2], '.-')
+                # plt.plot(point_interpolated[trace][::2], -point_interpolated[trace][1::2], 'r')
+                # plt.show()
+                # exit()
 
         self.data = point_interpolated
         self.number_of_frames, self.number_of_points = self.data.shape  # adjust to interpolated data shape
@@ -410,8 +410,14 @@ if __name__ == '__main__':
     source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'EndoContours')
     target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output')
 
-    cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
-    ven = Trace(source, '2DS120_AARO0441_ANDREU AGULLO_21_09_2018_4CH_FULL_TRACE_ENDO_V1_D1_B.CSV', interpolate=500)
+    # cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
+    ven = Trace('.', 'FULL_TRACE_FOR_PRES.CSV', interpolate=500)
+    plot_tool = PlottingCurvature(source='.',
+                                  output_path='.',
+                                  ventricle=ven)
+    plot_tool.plot_all_frames(coloring_scheme='curvature')
+    plot_tool.plot_heatmap()
+
 
     # cohort.save_curvatures()  # works!!!
     # cohort.save_indices()  # works!!!
