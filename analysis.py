@@ -251,13 +251,14 @@ class StrainAnalysis:
                                      index_col='ID', header=0)
         self.df_2ds = pd.read_excel(os.path.join(self.patient_data_path, self.twodstrain_filename),
                                     index_col='ID', header=0)
-        if os.path.isfile(os.path.join(self.output_path, merged_data_filename)):
-            self.df_comparison = pd.read_csv(os.path.join(self.output_path, merged_data_filename),
-                                             index_col='patient_ID', header=0)
-            self.df_comparison['curv_threshold'] = (self.df_comparison.avg_basal_ED < -0.9).astype(int) + 1
+        if not(os.path.isfile(os.path.join(self.output_path, merged_data_filename))):
+            self.get_min_ed_rows(True)
+            self.combine_measurements_2ds(True)
 
-        else:
-            exit('Create merged dataset')
+        self.df_comparison = pd.read_csv(os.path.join(self.output_path, merged_data_filename),
+                                         index_col='patient_ID', header=0)
+        self.df_comparison['curv_threshold'] = (self.df_comparison.avg_basal_ED < -0.09).astype(int) #+ 1 # CHANGE SIGN!!!!!!
+
         self.models = {}
 
     # ---Processing and combining dataframes----------------------------------------------------------------------------
@@ -285,7 +286,7 @@ class StrainAnalysis:
         :param to_file: Whether to save the result to a file.
         """
 
-        exit('Run only if really necessary! If so, update RGM and RFNA (files in export, 1.11.2019')
+        # exit('Run only if really necessary! If so, update RGM and RFNA (files in export, 1.11.2019)')
 
         relevant_columns = ['patient_ID_detail', 'min', 'min_delta', 'avg_min_basal_curv', 'avg_avg_basal_curv',
                             'min_ED', 'min_delta_ED', 'avg_basal_ED', 'SB', 'min_index', 'min_index_ED',
@@ -303,6 +304,7 @@ class StrainAnalysis:
         df_meas_2ds = df_meas_2ds[relevant_columns]
 
         if to_file:
+            df_meas_2ds.index.name = 'patient_ID'
             df_meas_2ds.to_csv(os.path.join(self.output_path, 'Measurements_and_2Dstrain.csv'))
 
     def plots_wt_and_curvature_vs_markers(self, save_figures=False):
@@ -367,7 +369,6 @@ class StrainAnalysis:
     def get_statistics(self, indices=()):
 
         df_stats = pd.DataFrame()
-        print(self.df_comparison.columns)
 
         for marker in self.FACTORS_BASIC:
             df_stats['sb_mean_'+marker] = self.df_comparison.groupby('SB')[marker].mean()
@@ -414,17 +415,16 @@ if __name__ == '__main__':
     patient_data_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'PatientData')
     curvature_results = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output')
     output = check_directory(os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output', 'Statistics'))
-    measurements = 'PREDICT-AF_Measurements.xlsx'
-    twodstrain = 'PREDICT_AF_Strain_MW_220.xlsx'
+    measurements = 'AduHeart_Measurements.xlsx'
+    twodstrain = 'AduHeart_Strain_MW.xlsx'
     curvature = 'master_table_full.csv'
-    patient_info = 'PREDICT-AF_PatientData_Full.xlsx'
+    patient_info = 'AduHeart_PatientData_Full.xlsx'
     merged_data = 'Measurements_and_2Dstrain.csv'
 
     anal = StrainAnalysis(patient_data_path, curvature_results, output, measurements, twodstrain, patient_info,
                           curvature, merged_data)
 
-    # anal.get_min_ed_rows(to_file=True)
-    # anal.combine_measurements_2ds(True)
+
     # anal.plots_wt_and_curvature_vs_markers(True)
     # anal.plot_curv_vs_wt(True)
     anal.get_statistics()

@@ -53,7 +53,7 @@ class Trace:
         with open(file_w_path) as f:
             for line in f:
                 if 'ID=' in line:
-                    self.id = line.split('=')[1].strip('\n')
+                    self.id = line.split('=')[1].strip('\n,')
                     self.id += '_' + '_'.join(self.case_filename.split('_')[-3:])
                     print(self.id)
                     f.close()
@@ -166,7 +166,9 @@ class Trace:
         self.biomarkers['min_ED'] = curv.loc[self.ed_frame, lower_bound:upper_bound].min()
         self.biomarkers['min_delta_ED'] = self.biomarkers.min_ED - self.biomarkers['min']
         self.biomarkers['avg_basal_ED'] = curv.loc[self.ed_frame, lower_bound:upper_bound].mean()
-
+        self.biomarkers['trace_length_ED'] = self._trace_length(self.data[self.ed_frame, ::2],
+                                                                self.data[self.ed_frame, 1::2])
+        print(self.biomarkers)
         return self.biomarkers
 
 
@@ -233,24 +235,29 @@ class Cohort:
     def _build_data_set(self, to_file=False):
 
         list_of_dfs = []
-        df_patient_data = pd.read_excel(os.path.join(patient_data_path, 'PREDICT-AF_PatientData_Full.xlsx'),
-                                        index_col='ID', header=0)
+        df_patient_data = pd.read_excel(os.path.join(patient_data_path, 'AduHeart_PatientData_Relevant.xlsx'),  # PREDICT-AF_Measurements
+                                        index_col='patient_ID', header=0)
+
         for curv_file in self.files:
             print('case: {}'.format(curv_file))
             ven = Trace(self.source_path, case_name=curv_file, view=self.view, interpolate=self.interpolate_traces)
-            # biomarkers = ven.get_biomarkers()
             list_of_dfs.append(ven.get_biomarkers())
 
         self.df_all_cases = pd.concat(list_of_dfs)
+
         self.df_all_cases.index.name = 'ID'
         self.df_all_cases['patient_ID'] = self.df_all_cases.index.map({k: k.split('_')[0] for k
                                                                        in self.df_all_cases.index})
-        self.df_all_cases = self.df_all_cases.join(df_patient_data.SB, how='outer', on='patient_ID')
+        print(self.df_all_cases)
+        print(df_patient_data)
+        self.df_all_cases = self.df_all_cases.join(df_patient_data.SB, how='inner', on='patient_ID')
         self.df_all_cases = self.df_all_cases.set_index(['patient_ID', self.df_all_cases.index])
 
         self.df_all_cases['min_index'] = np.abs(self.df_all_cases.min_delta * self.df_all_cases['min'])
         self.df_all_cases['min_index_ED'] = np.abs(self.df_all_cases.min_delta_ED * self.df_all_cases.min_ED)
+        self.df_all_cases['curv_len_inter'] = np.abs(self.df_all_cases.min_ED * self.df_all_cases.trace_length_ED)
 
+        print(self.df_all_cases)
         if to_file:
             data_set_output_dir = check_directory(os.path.join(self.output_path, 'output_EDA'))
             self.df_all_cases.to_csv(os.path.join(data_set_output_dir, self.indices_file))
@@ -407,23 +414,22 @@ if __name__ == '__main__':
     # ------------------------------------------------------------------------------------------------------------------
     # Cohort(windows)
     patient_data_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'PatientData')
-    source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'EndoContours')
-    target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output')
+    source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy')
+    target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'Output')
 
-    # cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
-    ven = Trace('.', 'FULL_TRACE_FOR_PRES.CSV', interpolate=500)
-    plot_tool = PlottingCurvature(source='.',
-                                  output_path='.',
-                                  ventricle=ven)
-    plot_tool.plot_all_frames(coloring_scheme='curvature')
-    plot_tool.plot_heatmap()
+    cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
+    # ven = Trace('.', 'FULL_TRACE_FOR_PRES.CSV', interpolate=500)
+    # plot_tool = PlottingCurvature(source='.',
+    #                               output_path='.',
+    #                               ventricle=ven)
+    # plot_tool.plot_all_frames(coloring_scheme='curvature')
+    # plot_tool.plot_heatmap()
 
-
-    # cohort.save_curvatures()  # works!!!
-    # cohort.save_indices()  # works!!!
-    # cohort.plot_curvatures()  # works!!!
-    # cohort.print_names_and_ids(to_file=True, views=(None,))  # works!!!
-    # cohort.save_statistics()  # works!!!
+    cohort.save_curvatures()
+    cohort.save_indices()
+    cohort.plot_curvatures()
+    # cohort.print_names_and_ids(to_file=True, views=(None,))
+    cohort.save_statistics()
 
     # for i, f in enumerate(os.listdir(source)):
     #

@@ -9,7 +9,6 @@ import imageio
 import shutil
 from scipy.spatial.distance import cdist
 from curvature import Curvature
-from oct2py import Oct2Py
 
 
 def check_directory(directory):
@@ -164,14 +163,15 @@ class Contour:
             self.smoothing_resolution = 2500
 
         print('Fitting')
-        oc = Oct2Py()
-        [oc.addpath(sub_pth) for sub_pth in pth]
-        # Get smooth contour. 12 is the number of elements (why?)
-        fit = oc.ScriptFitUltrasoundContour(border, 12, self.smoothing_resolution)
+        # TODO: Replace the Cubic Hermite inteprolation with RBF function
+        # oc = Oct2Py()
+        # [oc.addpath(sub_pth) for sub_pth in pth]
+        # # Get smooth contour. 12 is the number of elements (why?)
+        # fit = oc.ScriptFitUltrasoundContour(border, 12, self.smoothing_resolution)
         print('Fitting complete')
         fitted_points = [(p[0], p[1]) for p in fit]
 
-        return fitted_points, border
+        return border
 
     def _retrieve_voxel_size(self, segmentation_file):
 

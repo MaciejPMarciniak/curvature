@@ -1,5 +1,8 @@
 import pydicom
+from pydicom.tag import Tag
+from dicom_contour.contour import create_image_mask_files, get_contour_file
 import os
+import struct
 import shutil
 import csv
 import numpy as np
@@ -64,21 +67,6 @@ def remove_modified_dicoms(path_to_dicom_folders):
                 # os.remove(os.path.join(dirpath, filename))
                 pass
 
-
-def read_dicom(path_to_dicom_folders):
-    for (dirpath, dirnames, filenames) in os.walk(path_to_dicom_folders):
-        print(filenames)
-        for dicom_filename in filenames:
-            if dicom_filename == 'J9GD69G0':
-                ds = pydicom.read_file(os.path.join(dirpath, dicom_filename))
-                pa = ds.pixel_array
-                plt.imshow(pa[400:650, 700:])
-                plt.show()
-                # plt.savefig('pixel_array.png')
-
-                print(ds)
-
-
 def find(name, path):
     for root, dirs, files in os.walk(path):
         for dicoms in files:
@@ -105,16 +93,69 @@ def move_atrial_strain_files(path_to_dicom_folders, roi_folder_path):
             exit('Moving strain completed')
 
 
+def read_dicom(path_to_dicom_folders):
+    for (dirpath, dirnames, filenames) in os.walk(path_to_dicom_folders):
+        print(filenames)
+        for dicom_filename in filenames:
+            if dicom_filename == '1.2.528.1.1003.1.11526562807450000000546900218626.1.1.dcm':
+
+                ds = pydicom.read_file(os.path.join(dirpath, dicom_filename))
+                print(ds)
+                tag = Tag(0x79051011)
+                tag2 = Tag(0x79051013)
+                tag3 = Tag(0x79051017)
+                tag4 = Tag(0x80051021)
+                pdb = ds[tag].value[0]
+                pdb2 = pdb[tag2].value[0]
+                pdb3 = pdb2[tag3].value[0]
+                pdb4 = pdb3[tag4].value
+                print('$$$$$$$$$$$$')
+                pdb = np.fromstring(pdb4, dtype='int8')
+                print(pdb)
+                print(len(pdb))
+                # print(pdb4)
+                #
+                # print(ds)
+                # bits_allocated = str(ds.BitsAllocated)
+                # pixel_spacing = ds.PixelSpacing
+                # print(pdb)
+                # pdb = np.fromstring(pdb, dtype='int8')
+                # print(pdb)
+                # print(len(pdb))
+                pa = np.fromstring(pdb, dtype='int8').reshape((ds.Rows, ds.Columns))
+                plt.imshow(pa)
+                plt.show()
+                # # plt.savefig('pixel_array.png')
+
+                # print(ds)
+
+
+def print_dicom_folders(path_to_dicoms):
+    relevant_ids = ['aduheart013', 'aduheart018', 'aduheart021', 'aduheart033', 'aduheart185', 'aduheart452',
+                    'aduheart196', 'aduheart198', 'aduheart327', 'aduheart334']
+    relevant_ids = [relevant_id.upper() for relevant_id in relevant_ids]
+    print(relevant_ids)
+
+    for (dirpath, dirfolder, files) in os.walk(path_to_dicoms):
+        for dicom_file in files:
+
+            dfil = pydicom.read_file(os.path.join(dirpath, dicom_file))
+            print(dfil.PatientID)
+            if dfil.PatientID in relevant_ids:
+                print('Found!!!',  dfil.PatientID)
+                print(dirpath)
+            break
+
 if __name__ == '__main__':
-    path_to_dicoms  = r'D:\PredictAF_nonanon\HTcopy\HT_done'
-    path_to_dicoms2 = r'G:\HospitalClinic\AduHeart-DICOM'
+    path_to_dicoms  = r'G:\HospitalClinic\CurvatureStudy\AduHeart-RAW-NO-STRAIN'
+    path_to_dicoms2 = r'C:\Data\ProjectDevelopmentalAtlas\GenerationRTest\R113735'
     path_to_dicoms_test = r'F:\ABC0455'
     path_to_dicoms3 = r'C:\Users\mm18\Downloads\PV002 Echo 1 - 3D volume exports'
     path_to_dicoms4 = r'C:\EchoPAC_PC\ARCHIVE\Export\GEMS_IMG\2019_SEP\16\_P131238'
 
     # move_atrial_strain_files(path_to_dicoms2, r'D:\2DS_ROI_ES_HT')
 
-    # compute_gradient(img)
-    # read_dicom(path_to_dicoms4)
-    copy_2ds_sequences(path_to_dicoms2)
+    print_dicom_folders(r'G:\HospitalClinic\CurvatureStudy\AduHeart-DICOM')
+    # read_dicom(path_to_dicoms2)
+    # copy_2ds_sequences(path_to_dicoms2)
     # remove_modified_dicoms(path_to_dicoms2)
