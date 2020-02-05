@@ -9,6 +9,7 @@ from scipy.spatial.distance import cdist
 from scipy.interpolate.rbf import Rbf
 from curvature import GradientCurvature
 from datetime import datetime
+from PIL import Image
 
 
 def check_directory(directory):
@@ -20,17 +21,22 @@ def check_directory(directory):
 
 class Contour:
 
-    def __init__(self, segmentations_path, output_path=None, image_info_file=None, smoothing_resulution=500,
-                 pixel_size=None, scale=False, plot_smoothing_results=False):
+    def __init__(self, segmentations_path, output_path=None, image_info_file=None,  pixel_size=None, scale=False,
+                 smoothing_resulution=500, plot_smoothing_results=False):
         """
-        A class to calculate markers useful for quality checks 
-        :param segmentations_path:
-        :param output_path:
-        :param image_info_file:
-        :param smoothing_resulution:
-        :param pixel_size:
-        :param scale:
-        :param plot_smoothing_results:
+        A class to calculate the curvature and wall thickness of the left ventricle based on the NTNU segmentation model
+        :param segmentations_path: folder with segmentation images (with .png extension)
+        :param output_path: results will be stored in this folder
+        :param image_info_file: a csv file, containing information about the resolution of the original image. It should
+        contain three columns - 'id', with the name of the segmentation file (e.g. segmentation123.png),
+        and 'voxel_size_width' and 'voxel_size_height', with values that are used to resize the calculated markers to
+        a proper scale.
+        :param pixel_size: (tuple) if scalling factors are the same for all images in the segmentations_path, provide a
+        tuple with width and height of the pixels (in this order)
+        :param scale: (bool) whether or not to scale the markers
+        :param smoothing_resulution: (int) the number of points in the smooth version of the endocardium. The epicardium
+        will become 5 times as long, by default (for more accurate wall thickness measurement)
+        :param plot_smoothing_results: (bool) whether or not to plot the results of smoothing
         """
 
         self.segmentations_path = segmentations_path
@@ -54,13 +60,14 @@ class Contour:
 
         self.scale = scale
         self.plot_smoothing_results = plot_smoothing_results
+
         self.img_index = 0
         self.gray_mask = None
         self.endo_sorted_edge = list()
         self.epi_sorted_edge = list()
         self.mask_values = {'LV_bp': 85, 'LV_myo': 170}  # in NTNU model, these were the default values
         self.is_endo = True
-        self.smoothing_resolution = smoothing_resulution # number of points along the contour
+        self.smoothing_resolution = smoothing_resulution 
         self.distance_matrix = np.zeros(1)
         self.wall_thickness = None
         self.wall_thickness_markers = None
@@ -207,11 +214,21 @@ class Contour:
 
         return fitted_points, border
 
+    def _lv_edge(self):
+        self._reindex_atrium()
+        self.edge_diff_value = self.mask_values['LV_bp'] if self.is_endo else self.mask_values['LV_myo']
+        lv_edge_points = self._correct_indices()
+        lv_ordered_contour = self._walk_on_edge(lv_edge_points)
+
+        return lv_ordered_contour
+    # -----END-CreatingBorderContours-----------------------------------------------------------------------------------
+
+    # -----Scaling------------------------------------------------------------------------------------------------------
     def _retrieve_voxel_size(self, segmentation_file):
         try:
             df_image_info = pd.read_csv(self.image_info_file, index_col='id')
             image_id = os.path.basename(segmentation_file)
-            self.dimensions = df_image_info.loc[image_id][['voxel_size_width', 'voxel_size_height']].values
+            self.pixel_size = df_image_info.loc[image_id][['voxel_size_width', 'voxel_size_height']].values
         except FileNotFoundError:
             exit('No image information file has been found\n'
                  'Provide the image information file to adjust the contour to the voxel size')
@@ -221,20 +238,12 @@ class Contour:
             self._retrieve_voxel_size(segmentation_file)  # update dimensions
 
         if self.is_endo:
-            self.endo_sorted_edge = [[x[0] * self.dimensions[0],
-                                      x[1] * self.dimensions[1]] for x in self.endo_sorted_edge]
+            self.endo_sorted_edge = [[x[0] * self.pixel_size[0],
+                                      x[1] * self.pixel_size[1]] for x in self.endo_sorted_edge]
         else:
-            self.epi_sorted_edge = [[x[0] * self.dimensions[0],
-                                     x[1] * self.dimensions[1]] for x in self.epi_sorted_edge]
-
-    def _lv_edge(self):
-        self._reindex_atrium()
-        self.edge_diff_value = self.mask_values['LV_bp'] if self.is_endo else self.mask_values['LV_myo']
-        lv_edge_points = self._correct_indices()
-        lv_ordered_contour = self._walk_on_edge(lv_edge_points)
-
-        return lv_ordered_contour
-    # -----END-CreatingBorderContours-----------------------------------------------------------------------------------
+            self.epi_sorted_edge = [[x[0] * self.pixel_size[0],
+                                     x[1] * self.pixel_size[1]] for x in self.epi_sorted_edge]
+    # ---END-Scaling----------------------------------------------------------------------------------------------------
 
     # -----WallThicknessMeasurements------------------------------------------------------------------------------------
     def _calculate_bidirectional_local_distance_matrix(self):
@@ -385,9 +394,17 @@ class Contour:
     # ---END-Saving-----------------------------------------------------------------------------------------------------
 
     # -----Plotting-----------------------------------------------------------------------------------------------------
+    def _scale_mask(self):
+        print(self.gray_mask.shape)
+        pil_mask = Image.fromarray(self.gray_mask)
+        new_size = [int(a*b) for a, b in zip(self.gray_mask.shape, self.pixel_size)]
+        pil_mask = pil_mask.resize(new_size, Image.BILINEAR)
+        return np.array(pil_mask)
+
     def plot_mask_with_contour(self, contour1=None, contour2=None, save_file=''):
 
-        plt.imshow(self.gray_mask, cmap='gray')
+        scaled_greyscale = self._scale_mask()
+        plt.imshow(scaled_greyscale, cmap='gray')
         if contour1 is not None:
             xc = np.array([x[0] for x in contour1])
             yc = np.array([y[1] for y in contour1])
@@ -407,7 +424,8 @@ class Contour:
     def plot_wt(self, save_file=''):
 
         bld = self._calculate_bidirectional_local_distance_matrix()
-        plt.imshow(self.gray_mask, cmap='gray')
+        scaled_greyscale = self._scale_mask()
+        plt.imshow(scaled_greyscale, cmap='gray')
         for key in bld:
             xs = self.endo_sorted_edge[key][0], self.epi_sorted_edge[bld[key]][0]
             ys = self.endo_sorted_edge[key][1], self.epi_sorted_edge[bld[key]][1]
@@ -435,5 +453,5 @@ if __name__ == '__main__':
     output_path = segmentations_path
     image_info_file = 'C:\Data\ProjectCurvature\LAX_UKBB\Images_info\Image_details.csv'
 
-    cont = Contour(segmentations_path, output_path, image_info_file=image_info_file)
-    cont.save_all_results(True, True, True, True, True)
+    cont = Contour(segmentations_path, output_path, image_info_file='')
+    cont.save_all_results(False, False, False, False, True)
