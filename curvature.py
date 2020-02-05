@@ -32,10 +32,6 @@ class Curvature:
 
         menger_curvature = (2 * self._get_twice_triangle_area(a, b, c) /
                             (np.linalg.norm(a - b) * np.linalg.norm(b - c) * np.linalg.norm(c - a)))
-        # WARNING FOR NEGATIVE CURVATURE #
-        # if menger_curvature < 0.0:
-        #     warnings.warn('Negative curvature found with points: '
-        #                   '\na: {}\t b: {}\t c: {}'.format(a, b, c))
         return -menger_curvature
 
     def calculate_curvature(self, gap=0):

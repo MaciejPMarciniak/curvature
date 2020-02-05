@@ -37,7 +37,7 @@ class Contour:
 
         self.endo_sorted_edge = list()
         self.epi_sorted_edge = list()
-        self.mask_values = {'LV_bp': 85, 'LV_myo': 170}
+        self.mask_values = {'LV_bp': 85, 'LV_myo': 170}  # in NTNU model, these were the default values
         self.is_lv_endo = True
         self.smoothing_resolution = 500
         self.distance_matrix = np.zeros(1)
@@ -240,7 +240,7 @@ class Contour:
         mean_mid_thickness = np.mean(mid_thicknesses)
 
         return max_basal_thickness, mean_mid_thickness
-    # ---ENDWallThicknessMeasurements-----------------------------------------------------------------------------------
+    # ---END-WallThicknessMeasurements-----------------------------------------------------------------------------------
 
     # -----MainFunction-------------------------------------------------------------------------------------------------
     def lv_edges(self, calculate_wt):

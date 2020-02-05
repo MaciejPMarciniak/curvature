@@ -23,77 +23,35 @@ class StatAnalysis:
         self.input_path = input_path
         self.output_path = output_path
         self.data_filename = data_filename
+        self.df = self.read_dataframe(index_col='patient_ID')
 
-        self.df = None
-        self.controls = None
-        self.htn = None
-        self.bsh = None
-
-    def read_dataframe(self, index_col='cycle_id'):
-        self.df = pd.read_csv(os.path.join(self.input_path, self.data_filename), index_col=index_col,
-                              header=0)
-        print(self.df['avg_min_basal_curv'])
-        self.df = self.df.drop('TTA0246')
-        print(self.df.size)
-
-    def _inclusion_counts(self):
-        n_all = len(self.df.index)
-        n_faulty_segmentations = len(self.df.loc[self.df['min'] == 0.0, :].index)
-        n_faulty_contours = len(self.df.loc[self.df['min'] == 1.0, :].index)
-        return n_all, n_faulty_segmentations, n_faulty_contours
-
-    def _inclusion_statistics(self):
-        n_all, n_faulty_segmentations, n_faulty_contours = self._inclusion_counts()
-        pr_faulty_segmentations = n_faulty_segmentations / n_all * 100
-        pr_faulty_contours = n_faulty_contours / n_all * 100
-        pr_faulty_all = pr_faulty_contours + pr_faulty_segmentations
-        return pr_faulty_all, pr_faulty_segmentations, pr_faulty_contours
-
-    def describe_quality_assessment(self):
-        faulty_percentages = self._inclusion_statistics()
-        print('Number of cycles: {}\n'
-              'Discarded cycles (%): {}\n'
-              'Cycles discarded due to faulty segmentations (%): {}\n'
-              'Cycles discarded due to faulty segmentations '
-              'and contouring (%): {}\n'.format(len(self.df.index), *faulty_percentages))
+    def read_dataframe(self, index_col='patient_ID'):
+        return pd.read_csv(os.path.join(self.input_path, self.data_filename), index_col=index_col, header=0)
 
     @staticmethod
     def pop_std(x):
         return x.std(ddof=0)
 
-    def get_df_pre_processing(self, print=False):
-        df_pre = self.df[self.df['min'] != 0]
-        df_pre = df_pre[df_pre['min'] != 1]
-
-        pd.set_option('display.max_columns', 500)
-        df_pre = df_pre.groupby(['Patient_ID', 'Series_SOP']).agg(['mean', 'std'])
-
-        df_renamed = df_pre.set_axis(['_'.join(c) for c in df_pre.columns], axis='columns', inplace=False)
-        df_renamed.to_csv(os.path.join(self.output_path, 'analysis', 'Grouped_by_mean_and_std.csv'))
-
-        return df_renamed
-
-    def _check_normality_assumptions(self):
-        # https://docs.scipy.org/doc/scipy - 0.14.0/reference/generated/scipy.stats.levene.html
-
+    def variance_test(self, group_a, group_b):
         print('-----Variance test--------------------------------------------------')
-        t_l, p_l = levene(self.controls, self.htn, self.bsh)
+        df_a = self.df[group_a]
+        df_b = self.df[group_b]
+        t_l, p_l = levene(df_a, df_b)
         print('Statistic: {} and p-value: {} of variance comparison'.format(t_l, p_l))
         print('-----END Variance test----------------------------------------------\n')
+        # https://docs.scipy.org/doc/scipy - 0.14.0/reference/generated/scipy.stats.levene.html
+
+    def _check_normality_assumptions(self, feature):
 
         print('-----Normality test-------------------------------------------------')
         print('This function tests the null hypothesis that a sample comes from a normal distribution. ')
         print('It is based on D’Agostino and Pearson’s [1], [2] test that combines skew and kurtosis '
               'to produce an omnibus test of normality.')
         # https://docs.scipy.org/doc/scipy - 0.14.0/reference/generated/scipy.stats.normaltest.html
-        t_nt_control, p_nt_control = normaltest(self.controls)
+        t_nt_control, p_nt_control = normaltest(self.df[feature])
         print('Statistic: {} and p-value: {} of controls normality test'.format(t_nt_control, p_nt_control))
-        t_nt_htn, p_nt_htn = normaltest(self.htn)
-        print('Statistic: {} and p-value: {} of htn normality test'.format(t_nt_htn, p_nt_htn))
-        t_nt_bsh, p_nt_bsh = normaltest(self.bsh)
-        print('Statistic: {} and p-value: {} of bsh normality test'.format(t_nt_bsh, p_nt_bsh))
         print('-----END Normality test--------------------------------------------\n')
-        return p_l, p_nt_control, p_nt_htn, p_nt_bsh
+        return t_nt_control, p_nt_control
 
     def _multiple_non_parametric_test(self):
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.kruskal.html
@@ -107,113 +65,46 @@ class StatAnalysis:
         print('-----END Kruskal-Willis----------------------------------------------\n')
         return p_k
 
-    def _log_transform_data(self, covariate='', separate_sets=True):
+    def _welchs_t_test(self, covariate, group_a, group_b):
 
-        _df = self.df
-        _df[covariate] = np.abs(_df[covariate])
-        _df[covariate] = np.log(_df[covariate])
-        if separate_sets:
-            _controls = _df[_df['label'] == 0][covariate]
-            _htn = _df[_df['label'] == 1][covariate]
-            _bsh = _df[_df['label'] == 2][covariate]
-            return _controls, _htn, _bsh
-        else:
-            return _df
-
-    def _welchs_t_test(self, covariate):
-
-        controls, htn, bsh = self._log_transform_data(covariate=covariate)
+        df_a = self.df[group_a]
+        df_b = self.df[group_b]
 
         print('-----Pairwise t-test--------------------------------------------')
         print('Show that there is a diffence in medians between the groups. Use equal_var = False to perform'
               'the Welch\'s test')
         print('T_test, returning one-sided p-value:')
-        t_t_control_htn, p_control_htn = ttest_ind(htn, controls, equal_var=False)
+        t_t, p_val = ttest_ind(df_a, df_b, equal_var=False)
         print('Statistic: {} and p-value: {} of t-test analysis '
-              'on control vs htn groups'.format(t_t_control_htn, p_control_htn))
-        t_t_control_bsh, p_control_bsh = ttest_ind(bsh, controls, equal_var=False)
-        print('Statistic: {} and p-value: {} of t-test analysis '
-              'on control vs bsh groups'.format(t_t_control_bsh, p_control_bsh))
-        t_t_htn_bsh, p_htn_bsh = ttest_ind(bsh, htn, equal_var=False)
-        print('Statistic: {} and p-value: {} of t-test analysis '
-              'on htn vs bsh groups'.format(t_t_htn_bsh, p_htn_bsh, fmt='%.5'))
+              'on control vs htn groups'.format(t_t, p_val))
         print('-----END Pairwise t-test-------------------------------------------\n')
 
-    def perform_analysis(self, covariates=('min', 'avg_min_basal_curv', 'avg_avg_basal_curv')):
+    def perform_analysis(self, covariates=('avg_basal_ED')):
         if self.df is None:
             self.read_dataframe()
 
         for cov in covariates:
             # Check the basic descriptors
-            self.controls = self.df[self.df['label'] == 0][cov]
-            self.htn = self.df.loc[self.df['label'] == 1][cov]
-            self.bsh = self.df.loc[self.df['label'] == 2][cov]
+            df_cov = self.df[cov]
 
             print('----------------------------------------------')
             print('----------------------------------------------')
             print('Univariate tests on covariate {}'.format(cov))
             print('----------------------------------------------')
             # print(self.controls)
-            print('Control mean: {} and std: {} of {}'.format(self.controls.mean(),
-                                                              self.controls.std(),
+            print('Control mean: {} and std: {} of {}'.format(df_cov.mean(),
+                                                              df_cov.std(),
+                                                              df_cov.describe(),
                                                               cov))
-            print('Htn mean: {} and std: {} of {}'.format(self.htn.mean(),
-                                                          self.htn.std(),
-                                                          cov))
-            print('Bsh mean: {} and std: {} of {}'.format(self.bsh.mean(),
-                                                          self.bsh.std(),
-                                                          cov))
-            self._check_normality_assumptions()
-            self._multiple_non_parametric_test()
-            self._welchs_t_test(covariate=cov)
-
-    def predict_with_lr(self):
-
-        # Log transform data:
-        _df = self.df
-
-        print(_df[['avg_min_basal_curv', 'avg_avg_basal_curv', 'min']])
-        # _df = _df[_df['label'] > 0]
-        # print(log_df)
-        print('Split data')
-        X = np.array(_df[['avg_min_basal_curv', 'avg_avg_basal_curv', 'min']].values)  # .reshape(-1, 1)
-        y = np.array(_df['label'].values)
-        # y[y == 1] = 0
-        # y[y == 2] = 1
-        # X = X.reshape(-1,1)
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-
-        # X_train.reshape(-1, 1)
-        # X_test.reshape(-1, 1)
-        print('Define a pipeline to search for the best classifier regularization')
-        logistic = SGDClassifier(loss='log', penalty='l2', early_stopping=True,
-                                 max_iter=10000, tol=1e-5)
-        # Parameters of pipelines can be set using ‘__’ separated parameter names:
-        param_grid = {'alpha': np.logspace(-3, 3, 13)}
-        search = GridSearchCV(logistic, param_grid, iid=False, cv=5,
-                              return_train_score=False, n_jobs=-1, error_score='raise')
-        search.fit(X_train, y_train)
-
-        print("Best parameter {}, CV score = {}".format(search.best_params_, search.best_score_*100))
-        print('Accuracy score with logistic regression')
-        y_pred = search.predict(X_test)
-        print('Test set: {}'.format(accuracy_score(y_test, y_pred)))
-        # Turn one class to 1 and rest to zero, then apply roc curve
-        # print(roc_auc_score(y_test, y_pred, average='samples'))
+            self._check_normality_assumptions(cov)
+            # self._multiple_non_parametric_test()
+            # self._welchs_t_test(cov,)
 
     def plot_histograms(self, covariates=('avg_min_basal_curv',)):
         for cov in covariates:
 
-            plot_tool = PlottingDistributions(self.df, cov, output_path=self.output_path)
-            plot_tool.plot_multiple_distributions(group_by='label')
-            plot_tool.plot_multiple_boxplots(group_by='label')
-            sns.distplot(self.df.loc[self.df[cov] < -0.033, cov], kde=False, rug=True, color='r')
-            sns.distplot(self.df.loc[self.df[cov] >= -.033, cov], kde=False, rug=True, color='g', bins=None)
-            # sns.distplot(self.df.loc[:, cov], kde=True, rug=True, color='b', bins=None)
-            # sns.distplot(self.df.loc[self.df['label'] == 0, cov], kde=False, label='control', rug=True, color='r', bins=12)
-            # sns.distplot(self.df.loc[self.df['label'] == 1, cov], kde=False, label='htn', rug=True, color='g', bins=15)
-            # sns.distplot(self.df.loc[self.df['label'] == 2, cov], kde=False, label='bsh', rug=True, color='b', bins=10)
-            # plt.legend()
+            sns.distplot(self.df[cov], kde=False, rug=True, color='r')
+            plt.legend()
             plt.savefig(os.path.join(self.output_path, '{} histogram.png'.format(cov)))
             plt.close()
 
@@ -438,7 +329,7 @@ class VariabilityAnalysis:
     def calculate_sem_multi_index(self, view='PLAX', segment='basal', o1='F1', o2='F2', extended=False):
 
         assert view in ('PLAX', '4C'), 'Use only PLAX or 4C view'
-        assert segment in ('basal', 'mid'), 'Use only basal or mid segment'
+        assert segment in ('basal', 'mid', 'ratio'), 'Use only basal or mid segment or ratio label'
 
         colname = ' '.join([view, segment])
 
@@ -502,21 +393,28 @@ class VariabilityAnalysis:
     def bland_altman_plot_multi_index(self, o1='F1', o2='F2', view='PLAX', segment='basal'):
 
         assert view in ('PLAX', '4C'), 'Use only PLAX or 4C view'
-        assert segment in ('basal', 'mid'), 'Use only basal or mid segment'
+        assert segment in ('basal', 'mid', 'ratio'), 'Use only basal or mid segment or ratio label'
 
         cohort1 = self.df_wt[o1, ' '.join([view, segment])]
         cohort2 = self.df_wt[o2, ' '.join([view, segment])]
 
-        self.bland_altman_plot(cohort1, cohort2, title=' '.join(['Wall thickness measurement F1 vs', o2, view, segment]))
+        if segment == 'ratio':
+            self.bland_altman_plot(cohort1, cohort2, title=' '.join(['Observers F1 vs', o2, view, segment]),
+                                   measurement='Wall thickness ratio', units='')
+        else:
+            self.bland_altman_plot(cohort1, cohort2, title=' '.join(['Observers F1 vs', o2, view, segment]),
+                                   measurement='Wall thickness', units='[cm]')
+        # self.bland_altman_percentage_plot(cohort1, cohort2, title=' '.join(['Wall thickness percent difference: F1 vs', o2, view, segment]))
 
     def bland_altman_plot_single_index(self, o1='F1', o2='F2'):
 
         cohort1 = self.df_curv[o1]
         cohort2 = self.df_curv[o2]
 
-        self.bland_altman_plot(cohort1, cohort2, title='Curvature measurement F1 vs ' + o2)
+        self.bland_altman_plot(cohort1, cohort2, title='Observers F1 vs ' + o2, measurement='Curvature', units='[1/cm]')
+        # self.bland_altman_percentage_plot(cohort1, cohort2, title='Curvature % difference F1 vs ' + o2)
 
-    def bland_altman_plot(self, data1, data2, title, *args, **kwargs):
+    def bland_altman_plot(self, data1, data2, title, measurement, units, *args, **kwargs):
         data1 = np.asarray(data1)
         data2 = np.asarray(data2)
         mean = np.mean([data1, data2], axis=0)
@@ -541,10 +439,43 @@ class VariabilityAnalysis:
                      yerr=ci_loa_height, fmt='none',
                      capsize=10, c='r')
         plt.title(title)
-        plt.show()
+        plt.xlabel(measurement + ', average value {}'.format(units))
+        plt.ylabel(measurement + ', absolute difference {}'.format(units))
+        plt.savefig(os.path.join(self.output_path, ' '.join([measurement, view, segment, 'F1_'+o2])))
+        plt.close()
+        # plt.show()
 
-    def bland_altman_percentage_plot(self):
-        plt.scatter(self.df_wt.Difference_prcnt, 1)
+    def bland_altman_percentage_plot(self, data1, data2, title, *args, **kwargs):
+        data1 = np.round(np.asarray(data1), decimals=2)
+        data2 = np.round(np.asarray(data2), decimals=2)
+
+        mean = np.mean([data1, data2], axis=0)
+        diff = data1 - data2  # Difference between data1 and data2
+        print(diff)
+        print(mean)
+        diff_pr = diff / mean * 100
+        md = np.mean(diff_pr)  # Mean of the difference
+        sd = np.std(diff_pr, axis=0)  # Standard deviation of the difference
+
+        plt.scatter(mean, diff_pr, *args, **kwargs)
+        plt.axhline(md, color='gray', linestyle='--')
+        plt.axhline(md + 1.96 * sd, color='gray', linestyle=':')
+        plt.axhline(md - 1.96 * sd, color='gray', linestyle=':')
+
+        _, _, _, se = self.calculate_standard_error(mean)
+        ci_loa_height = sd * se
+        ci_loa_x = mean.min(), mean.max()
+
+        plt.errorbar(ci_loa_x, [md + 1.96 * sd] * 2,
+                     yerr=ci_loa_height, fmt='none',
+                     capsize=10, c='r')
+
+        plt.errorbar(ci_loa_x, [md - 1.96 * sd] * 2,
+                     yerr=ci_loa_height, fmt='none',
+                     capsize=10, c='r')
+        plt.ylim((-1000, 1000))
+        plt.title(title)
+        plt.show()
 
 
 if __name__ == '__main__':
@@ -559,13 +490,15 @@ if __name__ == '__main__':
     var = VariabilityAnalysis(measurements_path, output_path, measurements_filename)
     var.calculate_sem_single_index()
     var.calculate_sem_multi_index()
-    var._test_sem_calculations()
-    exit()
+    # var._test_sem_calculations()
+
     for o2 in ['F2', 'M', 'J']:
+        view=''
+        segment=''
         var.bland_altman_plot_single_index(o2=o2)
     for o2 in ['F2', 'M', 'J']:
         for view in ['PLAX', '4C']:
-            for segment in ['basal', 'mid']:
+            for segment in ['basal', 'mid', 'ratio']:
                 var.bland_altman_plot_multi_index(o2=o2, view=view, segment=segment)
 
     # STRAIN ANALYSIS
