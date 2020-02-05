@@ -67,7 +67,7 @@ class Contour:
         self.epi_sorted_edge = list()
         self.mask_values = {'LV_bp': 85, 'LV_myo': 170}  # in NTNU model, these were the default values
         self.is_endo = True
-        self.smoothing_resolution = smoothing_resulution 
+        self.smoothing_resolution = smoothing_resulution
         self.distance_matrix = np.zeros(1)
         self.wall_thickness = None
         self.wall_thickness_markers = None
@@ -187,7 +187,7 @@ class Contour:
             border = self.epi_sorted_edge
             _smoothing_resolution *= 5
 
-        print('Fitting')
+        print('Interpolating')
 
         x_orig = np.array([x[0] for x in border])
         y_orig = np.array([y[1] for y in border])
@@ -200,8 +200,6 @@ class Contour:
         interpolation_target_n = np.linspace(0, len(border) - 1, _smoothing_resolution)
         x_interpolated = rbf_x(interpolation_target_n)
         y_interpolated = rbf_y(interpolation_target_n)
-
-        print('Fitting complete')
 
         if self.plot_smoothing_results:
             # Plot if you want to see the results
@@ -388,14 +386,13 @@ class Contour:
             if save_markers:
                 out_dir = check_directory(os.path.join(self.output_path, 'Markers'))
                 df_cohort = pd.DataFrame(markers_cohort)
-                date_id = datetime.now().isoformat(timespec='minutes')
-                df_cohort.to_csv(os.path.join(out_dir, 'CohortMarkers_{}.csv'.format(date_id)))
+                date_id = datetime.now().isoformat(timespec='minutes').replace('T', '_').replace(':', '-')
+                df_cohort.to_csv(os.path.join(out_dir, 'Cohort_markers_{}.csv'.format(date_id)))
 
     # ---END-Saving-----------------------------------------------------------------------------------------------------
 
     # -----Plotting-----------------------------------------------------------------------------------------------------
     def _scale_mask(self):
-        print(self.gray_mask.shape)
         pil_mask = Image.fromarray(self.gray_mask)
         new_size = [int(a*b) for a, b in zip(self.gray_mask.shape, self.pixel_size)]
         pil_mask = pil_mask.resize(new_size, Image.BILINEAR)
@@ -445,13 +442,13 @@ class Contour:
 if __name__ == '__main__':
 
     # parser = argparse.ArgumentParser(description='Create contours to input into the curvature model')
-        # parser.add_argument('-s', '--segmentations', help='Segmentation results from NTNU model', required=True)
-        # parser.add_argument('-o', '--output_path', help='Directory where output will be stored', required=True)
-        # args = parser.parse_args()
+    # parser.add_argument('-s', '--segmentations', help='Segmentation results from NTNU model', required=True)
+    # parser.add_argument('-o', '--output_path', help='Directory where output will be stored', required=True)
+    # args = parser.parse_args()
 
     segmentations_path = 'C:\Code\curvature\model'
     output_path = segmentations_path
-    image_info_file = 'C:\Data\ProjectCurvature\LAX_UKBB\Images_info\Image_details.csv'
 
     cont = Contour(segmentations_path, output_path, image_info_file='')
-    cont.save_all_results(False, False, False, False, True)
+    cont.save_all_results(save_markers=True, save_contours=False, save_wt=False, save_curvature=False,
+                          save_images=False)
