@@ -83,9 +83,10 @@ class Trace:
 
     def _find_ed_and_es_frame(self):
         areas = np.zeros(int(self.number_of_frames/2))  # Search only in the first half for ED
-        for frame in range(int(self.number_of_frames/2)):
+        for f, frame in enumerate(range(int(self.number_of_frames/2)+1, self.number_of_frames)):
             x, y = self.data[frame, ::2], self.data[frame, 1::2]
-            areas[frame] = self._plane_area(x, y)
+            print(f)
+            areas[f] = self._plane_area(x, y)
         self.es_frame, self.ed_frame = np.argmin(areas), np.argmax(areas)
 
     def _interpolate_traces(self, trace_points_n=None):
@@ -235,7 +236,7 @@ class Cohort:
     def _build_data_set(self, to_file=False):
 
         list_of_dfs = []
-        df_patient_data = pd.read_excel(os.path.join(patient_data_path, 'AduHeart_PatientData_Relevant.xlsx'),  # PREDICT-AF_Measurements
+        df_patient_data = pd.read_excel(os.path.join(patient_data_path, 'PREDICT-AF_Measurements.xlsx'),  # AduHeart_PatientData_Relevant
                                         index_col='patient_ID', header=0)
 
         for curv_file in self.files:
@@ -440,7 +441,6 @@ if __name__ == '__main__':
     # Cohort(linux)
     # source = os.path.join('home','mat','Python','data','curvature')
     # target_path = os.path.join('home','mat','Python','data','curvature')
-
 
     # representatives = ('RV_4C.CSV', 'CAS0214_4C.CSV', 'DPJMA0472.CSV')
     #

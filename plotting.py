@@ -332,16 +332,39 @@ class PlottingDistributions:
 
     def plot_multiple_boxplots(self, group_by, hue=None, show=False):
 
-        _ = plt.figure(figsize=(15, 8))
-        _ = sns.boxplot(x=group_by, y=self.series, hue=hue, data=self.df)
+        _ = plt.figure(figsize=(8, 2))
+        _ = sns.boxplot(x=self.series, y=group_by, hue=hue, data=self.df, orient='h')
         _ = plt.gcf()
 
         if show:
             plt.show()
         plot_name = 'boxplot_' + self.series + '_by_' + group_by
 
+        plt.xlabel(self.series, fontsize=23)
+        plt.xticks(fontsize=16)
+        plt.ylabel('')
+        plt.yticks([0, 1], ['', ''])
+
+        if 'Average septal curvature [cm-1]' in self.series:
+            plt.xlabel('Average septal curvature $[cm^{-1}]$', fontsize=23)
+
+        if 'SB' in group_by and len(group_by) == 2:
+            plt.yticks([-1, 0, 1, 2], ['', 'HTN no BSH', 'HTN w/BSH', ''], fontsize=16)
+
+        if 'strain_avc_Basal' in self.series:
+            plt.xlabel('Basal septal strain [%]')
+        if 'Wall thickness' in self.series:
+            plt.xlim((0.7, 2.2))
+
+        if '80 percentile' in group_by:
+            plt.yticks([0, 1, 2], ['Controls', '0-80th percentile', '80th-100th percentile'])
+        elif 'SB' in group_by and len(group_by) > 2:
+            plt.yticks([0, 1, 2], ['Controls', 'HTN no BSH', 'HTN BSH'])
+            plt.ylabel('')
+
         if hue is not None:
             plot_name += '_on_' + hue
+        plt.tight_layout()
         self._save_plot(plot_name + '.png', _)
 
     def plot_2_distributions(self, series1, series2, kind, show=False):
@@ -361,18 +384,38 @@ class PlottingDistributions:
     def plot_with_labels(self, series1, series2, w_labels=True, show=False):
 
         if w_labels:
-            lm = sns.lmplot(x=series1, y=series2, data=self.df, hue='label', palette='bright',
-                            markers=['d', 'x', 'o']).fig
+            lm = sns.lmplot(x=series1, y=series2, data=self.df, palette='black',
+                            markers=['o']).fig
         else:
-            lm = sns.lmplot(x=series1, y=series2, data=self.df, hue='SB', robust=True, ci=95).fig
+            lm = sns.lmplot(x=series1, y=series2, data=self.df, hue='dummy',
+                            robust=False, ci=99, legend=False, height=6.5, aspect=1.3,
+                            scatter_kws={"s": 100, 'color': 'k'}, line_kws={'linewidth': 4, 'color': 'firebrick'})
 
-        lm.suptitle('Hypertensive cohort')
-        sns.set()
+        # lm = plt.gcf()
+        # lm.suptitle('Relation between curvature index and wall thickness ratio')
+        plt.xlabel(series1, fontsize=27)
+        if 'Average septal curvature' in series1:
+            plt.xlabel(r'Average septal curvature $[cm^{-1}]$', fontsize=27)
+        if 'Average septal curvature [cm-1]' in series2:
+            plt.ylabel(r'Average septal curvature $[cm^{-1}]$', fontsize=27)
+        if 'strain_avc_Basal' in series2:
+            plt.ylabel('Basal septal strain [%]', fontsize=30)
+        if 'Wall thickness' in series1:
+            plt.xlim(0.7, 2.2)
+            plt.ylabel('')
+
+        plt.ylim((-24, -6))
+        plt.xticks(fontsize=19)
+        plt.yticks(fontsize=19)
+
+        # sns.set()
         plt.tight_layout()
 
         if show:
             plt.show()
         self._save_plot(series1.replace('/', '_') + '_vs_' + series2 + '_labeled.png', lm)
+        plt.clf()
+        plt.close()
 
 
 if __name__ == '__main__':
