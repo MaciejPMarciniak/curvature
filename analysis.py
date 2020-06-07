@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from pandas.plotting import parallel_coordinates
-from scipy.stats import kruskal, levene, ttest_ind, normaltest, sem, spearmanr, pearsonr
+from scipy.stats import kruskal, levene, ttest_ind, normaltest, spearmanr, pearsonr
 import os
 import matplotlib.pyplot as plt
 from sklearn.linear_model import SGDClassifier
@@ -133,27 +133,29 @@ class StatAnalysis:
         # self._welchs_t_test(cov,)
 
     def plot_boxplots(self, covariates=('Average septal curvature $[cm^{-1}]$',), hue='SB'):
-        plot_tool = PlottingDistributions(self.df, covariates[0], output_path=self.output_path)
+        plot_tool = PlottingDistributions(self.df[self.df[hue] <3], covariates[0], output_path=self.output_path)
+        # self.df = self.df[self.df.SB>0]
         for cov in covariates:
             plot_tool.series = cov
             plot_tool.plot_multiple_boxplots(group_by=hue)
 
     def plot_histograms(self, covariates=('avg_min_basal_curv',)):
         for cov in covariates:
-
-            sns.distplot(self.df[cov], kde=False, rug=True, color='b', bins=18)
+            sns.distplot(self.df.loc[self.df[r'85 percentile curv'] < 3][cov], kde=False, rug=True, color='r', bins=12)
+            sns.distplot(self.df.loc[self.df[r'85 percentile curv'] == 3][cov], kde=False, rug=True, color='g', bins=6)
             # plt.legend()
 
             if 'Average septal curvature' in cov:
-                plt.xlabel(r'Average septal curvature $[cm^{-1}]$', fontsize=23)
+                plt.xlabel(r'Average septal curvature $[dm^{-1}]$', fontsize=23)
                 plt.ylabel('Frequency', fontsize=30)
             else:
                 plt.ylabel('')
                 plt.xlabel(cov, fontsize=23)
             plt.xticks(fontsize=16)
             plt.yticks(fontsize=16)
+
             plt.tight_layout()
-            plt.savefig(os.path.join(self.output_path, '{} histogram.png'.format(cov)))
+            plt.savefig(os.path.join(self.output_path, '{} histogram.svg'.format(cov)))
             plt.clf()
             plt.close()
 
@@ -314,8 +316,8 @@ class StrainAnalysis:
         self.df_comparison.plot(x=r'Wall thickness ratio in PLAX view', y=r'Wall thickness ratio in 4CH view',
                                 c='Average septal curvature [cm-1]', kind='scatter', legend=False, s=200,
                                 colorbar=True, cmap=newcmp, title='',
-                                figsize=(10, 8))
-        plt.title('Curvature values w.r.t. both WTR metrics', fontsize=26)
+                                figsize=(9, 7.2))
+        # plt.title('Curvature values w.r.t. both WTR metrics', fontsize=26)
         plt.xlabel(r'Wall thickness ratio in PLAX view', fontsize=23)
         plt.ylabel(r'Wall thickness ratio in 4CH view', fontsize=23)
 
@@ -327,10 +329,10 @@ class StrainAnalysis:
         plt.ylim((0.7, 2.2))
         plt.tight_layout()
         f = plt.gcf()
-        f.get_axes()[1].set_ylabel('Average septal curvature $[cm^{-1}]$', fontsize=23)
+        f.get_axes()[1].set_ylabel('Average septal curvature $[dm^{-1}]$', fontsize=23)
         f.get_axes()[1].tick_params(labelsize=16)
         if save_figures:
-            plt.savefig(os.path.join(plot_dir, r'Ratios_curvature.png'))
+            plt.savefig(os.path.join(plot_dir, r'Ratios_curvature.svg'))
         else:
             plt.show()
 
@@ -385,7 +387,6 @@ class StrainAnalysis:
 
 
 class VariabilityAnalysis:
-
     OBSERVERS = ['F1', 'F2', 'M', 'J']
     MEASUREMENTS = ['PLAX basal', 'PLAX mid', '4C basal', '4C mid']
 
@@ -418,47 +419,72 @@ class VariabilityAnalysis:
         self.df_wt['SEM', 'Mean_measurement'] = (self.df_wt[o1, colname] + self.df_wt[o2, colname]) / 2
         self.df_wt['SEM', 'Difference'] = self.df_wt[o1, colname] - self.df_wt[o2, colname]
         self.df_wt['SEM', 'Difference_round'] = np.round(self.df_wt.SEM.Difference, decimals=2)
-        self.df_wt['SEM', 'Difference_prcnt'] = self.df_wt.SEM.Difference / self.df_wt.SEM.Mean_measurement * 100
-        self.df_wt['SEM', 'Difference_prcnt_round'] = np.round(self.df_wt.SEM.Difference_prcnt, decimals=2)
+        self.df_wt['SEM', 'Difference_abs'] = np.abs(self.df_wt.SEM.Difference)
+        self.df_wt['SEM', 'Difference_abs_round'] = np.round(self.df_wt.SEM.Difference_abs, decimals=2)
 
-        if extended:
-            self.df_wt['SEM', 'Abs difference'] = sem((self.df_wt[o1, colname], self.df_wt[o2, colname]), ddof=1) * 2
-            self.df_wt['SEM', 'Individual SD'] = sem((self.df_wt[o1, colname], self.df_wt[o2, colname]), ddof=0) * 2
+        if segment == 'ratio':
+            df_range = pd.DataFrame(index=['_'.join([view, segment, o1, o2])])
 
-        mean_sem = np.mean(self.df_wt.SEM).round(decimals=2)
-        sd_sem = np.std(self.df_wt.SEM).round(decimals=3)
-        print(mean_sem, sd_sem)
+            df_range['Min_measurement'] = self.df_wt.SEM.Mean_measurement.min()
+            df_range['Max_measurement'] = self.df_wt.SEM.Mean_measurement.max()
+            df_range['Range'] = df_range.Max_measurement - df_range.Min_measurement
 
-        return mean_sem, sd_sem
+            df_range['Min_error'] = self.df_wt.SEM.Difference_abs.min()
+            df_range['Max_error'] = self.df_wt.SEM.Difference_abs.max()
+            df_range['Range_error'] = df_range.Max_error - df_range.Min_error
+
+            df_range['Mean_abs_error'] = np.mean(self.df_wt.SEM.Difference_abs)
+            df_range['Sd_abs_error'] = np.std(self.df_wt.SEM.Difference_abs)
+
+            df_range['Error_range_ratio'] = df_range.Range_error / df_range.Range
+            df_range['Mean_abs_error_ratio'] = df_range.Mean_abs_error / df_range.Range
+            df_range['Sd_abs_error_ratio'] = df_range.Sd_abs_error / df_range.Range
+            return df_range
+
+        return self.df_wt
 
     def calculate_sem_single_index(self, o1='F1', o2='F2', extended=False):
 
         self.df_curv['Mean_measurement'] = (self.df_curv[o1] + self.df_curv[o2]) / 2
         self.df_curv['Difference'] = self.df_curv[o1] - self.df_curv[o2]
         self.df_curv['Difference_round'] = np.round(self.df_curv.Difference, decimals=2)
-        self.df_curv['Difference_prcnt'] = self.df_curv.Difference / self.df_curv.Mean_measurement
-        self.df_curv['Difference_prcnt_round'] = np.round(self.df_curv.Difference_prcnt, decimals=2)
+        self.df_curv['Difference_abs'] = np.abs(self.df_curv.Difference)
+        self.df_curv['Difference_abs_round'] = np.round(self.df_curv.Difference_abs, decimals=2)
 
-        if extended:
-            self.df_curv['Abs difference'] = sem((self.df_curv[o1], self.df_curv[o2]), ddof=1) * 2
-            self.df_curv['Individual SD'] = sem((self.df_curv[o1], self.df_curv[o2]), ddof=0) * 2
+        df_range = pd.DataFrame(index=['_'.join([o1, o2])])
 
-        mean_sem = np.mean(self.df_curv[['Difference', 'Difference_prcnt']])
-        sd_sem = np.std(self.df_curv[['Difference', 'Difference_prcnt']])
-        print(mean_sem, sd_sem)
+        df_range['Min_measurement'] = self.df_curv.Mean_measurement.min()
+        df_range['Max_measurement'] = self.df_curv.Mean_measurement.max()
+        df_range['Range'] = df_range.Max_measurement - df_range.Min_measurement
 
-        return mean_sem, sd_sem
+        df_range['Min_error'] = self.df_curv.Difference_abs.min()
+        df_range['Max_error'] = self.df_curv.Difference_abs.max()
+        df_range['Range_error'] = df_range.Max_error - df_range.Min_error
+
+        df_range['Mean_abs_error'] = np.mean(self.df_curv.Difference_abs)
+        df_range['Sd_abs_error'] = np.std(self.df_curv.Difference_abs)
+
+        df_range['Error_range_ratio'] = df_range.Range_error / df_range.Range
+        df_range['Mean_abs_error_ratio'] = df_range.Mean_abs_error / df_range.Range
+        df_range['Sd_abs_error_ratio'] = df_range.Sd_abs_error / df_range.Range
+
+        # self.df_curv.to_csv(os.path.join(self.output_path, 'curv_{}_{}.csv'.format(o1, o2)))
+
+        return df_range
 
     def _test_sem_calculations(self):  # function to ensure compliance with the theoretical values from the paper
 
-        self.df_test['SEM', 'Absolute difference'] = sem((self.df_test.Measurement1.m, self.df_test.Measurement2.m), ddof=1) * 2
-        self.df_test['SEM', 'Individual SD'] = sem((self.df_test.Measurement1.m, self.df_test.Measurement2.m), ddof=0) * 2
+        self.df_test['SEM', 'Absolute difference'] = sem((self.df_test.Measurement1.m, self.df_test.Measurement2.m),
+                                                         ddof=1) * 2
+        self.df_test['SEM', 'Individual SD'] = sem((self.df_test.Measurement1.m, self.df_test.Measurement2.m),
+                                                   ddof=0) * 2
         self.df_test['SEM', 'Difference'] = self.df_test.Measurement1.m - self.df_test.Measurement2.m
         self.df_test['SEM', 'Mean measurement'] = (self.df_test.Measurement1.m + self.df_test.Measurement2.m) / 2
         self.df_test['SEM', 'Difference_round'] = np.round(self.df_test.SEM.Difference, decimals=2)
         print(self.df_test['SEM', 'Difference'])
         print(self.df_test['SEM', 'Mean measurement'])
-        self.df_test['SEM', 'Difference_prcnt'] = self.df_test['SEM', 'Difference'] / self.df_test['SEM', 'Mean measurement'] * 100
+        self.df_test['SEM', 'Difference_prcnt'] = self.df_test['SEM', 'Difference'] / self.df_test[
+            'SEM', 'Mean measurement'] * 100
         self.df_test['SEM', 'Difference_prcnt_round'] = np.round(self.df_test['SEM', 'Difference_prcnt'])
         print(self.df_test[['Absolute intraobserver variability', 'SEM']])
         mean_sem = np.mean(self.df_test.SEM).round(decimals=2)
@@ -468,9 +494,9 @@ class VariabilityAnalysis:
     def calculate_standard_error(self, sem_):
 
         factor = np.sqrt(2 * self.n_samples)  # np.sqrt(2 * n * (m - 1)), m === 2
-        se_plus = sem_ * (1 + 1/factor)
-        se_minus = sem_ * (1 - 1/factor)
-        return se_plus, se_minus, sem_/factor, 1/factor
+        se_plus = sem_ * (1 + 1 / factor)
+        se_minus = sem_ * (1 - 1 / factor)
+        return se_plus, se_minus, sem_ / factor, 1 / factor
 
     def bland_altman_plot_multi_index(self, o1='F1', o2='F2', view='PLAX', segment='basal'):
 
@@ -484,7 +510,8 @@ class VariabilityAnalysis:
 
         if segment == 'ratio':
             self.bland_altman_plot(cohort1, cohort2, title=_title,
-                                   measurement='Wall thickness ratio', units='', xlimits=(0.7, 1.9), ylimits=(-0.7, 1.0))
+                                   measurement='Wall thickness ratio', units='', xlimits=(0.7, 1.9),
+                                   ylimits=(-0.7, 1.0))
         else:
             self.bland_altman_plot(cohort1, cohort2, title=_title,
                                    measurement='Wall thickness', units='[cm]', xlimits=(0.5, 1.6), ylimits=(-0.6, 1.0))
@@ -498,8 +525,8 @@ class VariabilityAnalysis:
 
         _title = 'Observers O1 & {}'.format('O1*' if o2 == 'F2' else 'O2' if o2 == 'J' else 'O3')
 
-        self.bland_altman_plot(cohort1, cohort2, title=_title, measurement='Curvature',
-                               units='$[cm^{-1}]$', xlimits=(-2.5, 1.0), ylimits=(-1, 1))
+        self.bland_altman_plot(cohort1, cohort2, title=_title, measurement='Curvature index',
+                               units='$[dm^{-1}]$', xlimits=(-2.5, 1.0), ylimits=(-1, 1))
         # self.bland_altman_percentage_plot(cohort1, cohort2, title='Curvature % difference F1 vs ' + o2)
 
     def bland_altman_plot(self, data1, data2, title, measurement, units, xlimits, ylimits, *args, **kwargs):
@@ -517,9 +544,10 @@ class VariabilityAnalysis:
         htn_no_bsh = np.invert(htn_bsh)
         htn_mean = mean[10:]
         htn_diff = diff[10:]
-        plt.scatter(mean[:10], diff[:10], *args, **kwargs)
-        plt.scatter(np.extract(htn_no_bsh, htn_mean), np.extract(htn_no_bsh, htn_diff))
-        plt.scatter(np.extract(htn_bsh, htn_mean), np.extract(htn_bsh, htn_diff))
+        plt.figure(figsize=(4, 4))
+        plt.scatter(np.extract(htn_no_bsh, htn_mean), np.extract(htn_no_bsh, htn_diff), marker='d', s=90)
+        plt.scatter(np.extract(htn_bsh, htn_mean), np.extract(htn_bsh, htn_diff), marker='d', s=90)
+        plt.scatter(mean[:10], diff[:10], *args, **kwargs, marker='d', s=90)
         plt.axhline(md, color='black', linestyle='--')
         plt.axhline(md + 1.96 * sd, color='gray', linestyle=':')
         plt.axhline(md - 1.96 * sd, color='gray', linestyle=':')
@@ -535,12 +563,15 @@ class VariabilityAnalysis:
         # plt.errorbar(ci_loa_x, [md - 1.96 * sd] * 2,
         #              yerr=ci_loa_height, fmt='none',
         #              capsize=10, c='r')
-        plt.title(title)
-        plt.xlabel(measurement + ', average value {}'.format(units))
-        plt.ylabel(measurement + ', absolute difference {}'.format(units))
+
+        # plt.title(title)
+        plt.xlabel(measurement + ', average value {}'.format(units), fontsize=12)
+        plt.ylabel(measurement + ', difference {}'.format(units), fontsize=13)
         plt.xlim(xlimits)
         plt.ylim(ylimits)
-        plt.savefig(os.path.join(self.output_path, ' '.join([measurement, view, segment, 'F1_'+o2])))
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.output_path, ' '.join([measurement, view, segment, 'F1_' + o2 + '.svg'])),
+                    dpi=1200)
         plt.close()
         # plt.show()
 
@@ -550,8 +581,6 @@ class VariabilityAnalysis:
 
         mean = np.mean([data1, data2], axis=0)
         diff = data1 - data2  # Difference between data1 and data2
-        print(diff)
-        print(mean)
         diff_pr = diff / mean * 100
         md = np.mean(diff_pr)  # Mean of the difference
         sd = np.std(diff_pr, axis=0)  # Standard deviation of the difference
@@ -581,39 +610,38 @@ if __name__ == '__main__':
 
     # VARIABILITY ANALYSIS
     #
-    # measurements_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'StudyResults')
-    # output_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'StudyResults')
-    #
-    # measurements_filename = 'InterObserverStudy.xlsx'
-    #
-    # var = VariabilityAnalysis(measurements_path, output_path, measurements_filename)
-    # var.calculate_sem_single_index()
-    # var.calculate_sem_multi_index()
-    # # var._test_sem_calculations()
-    #
-    # for o2 in ['F2', 'M', 'J']:
-    #     view=''
-    #     segment=''
-    #     var.bland_altman_plot_single_index(o2=o2)
-    # for o2 in ['F2', 'M', 'J']:
-    #     for view in ['PLAX', '4C']:
-    #         for segment in ['basal', 'mid', 'ratio']:
-    #             var.bland_altman_plot_multi_index(o2=o2, view=view, segment=segment)
+    measurements_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'StudyResults')
+    output_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'StudyResults')
 
+    measurements_filename = 'InterObserverStudy.xlsx'
+
+    var = VariabilityAnalysis(measurements_path, output_path, measurements_filename)
+    # var._test_sem_calculations()
+    # ranges = pd.DataFrame()
+    for o2 in ['F2', 'M', 'J']:
+        view = ''
+        segment = ''
+        df_range = var.calculate_sem_single_index(o2=o2)
+        var.bland_altman_plot_single_index(o2=o2)
+    #     ranges = pd.concat((ranges, df_range), axis=0)
+    #     for view in ['PLAX', '4C']:
+    #         var.bland_altman_plot_multi_index(o2=o2, view=view, segment='ratio')
+    #         df_range = var.calculate_sem_multi_index(o2=o2, view=view, segment='ratio')
+    #         ranges = pd.concat((ranges, df_range), axis=0)
+    # ranges.to_csv(os.path.join(var.output_path, 'ranges.csv'))
+    # print(ranges)
     # STRAIN ANALYSIS
     #
-    # patient_data_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'PatientData')
-    # curvature_results = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output')
-    # output = check_directory(os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output', 'Statistics'))
-    # # measurements = 'AduHeart_Measurements.xlsx'
-    # # twodstrain = 'AduHeart_Strain_MW.xlsx'
-    # # curvature = 'master_table_full.csv'
-    # # patient_info = 'AduHeart_PatientData_Full.xlsx'
-    # merged_data = 'Measurements_and_2DstrainPlotting.csv'
-    # #
-    # anal = StrainAnalysis(patient_data_path, curvature_results, output, measurements, twodstrain, patient_info,
-    #                       curvature, merged_data)
-
+    patient_data_path = os.path.join('C:\Data\ProjectCurvature\Analysis\Output_HTN\Statistics')
+    curvature_results = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output')
+    output = check_directory(os.path.join('C:\Data\ProjectCurvature\Analysis\Output_HTN\Statistics\plots', 'EDA'))
+    # measurements = 'AduHeart_Measurements.xlsx'
+    # twodstrain = 'AduHeart_Strain_MW.xlsx'
+    # curvature = 'master_table_full.csv'
+    # patient_info = 'AduHeart_PatientData_Full.xlsx'
+    merged_data = 'Measurements_and_2DstrainPlotting.csv'
+    #
+    # anal = StrainAnalysis(patient_data_path, curvature_results, output, merged_data_filename=merged_data)
 
     # anal.plots_wt_and_curvature_vs_markers(True)
     # anal.plot_curv_vs_wt(True)
@@ -623,16 +651,14 @@ if __name__ == '__main__':
     # STATANALYSIS
 
     source = os.path.join('C:\Data\ProjectCurvature\Analysis\Output_HTN\Statistics')
+    # datafile = 'Measurements_and_2DstrainPlottingAll.csv'
     datafile = 'Measurements_and_2DstrainPlotting.csv'
 
-    output = os.path.join(source, r'plots\EDA')
 
-    anal = StatAnalysis(input_path=source, output_path=output, data_filename=datafile)
-    anal.read_dataframe('patient_ID')
-    # Preprocessing
-    # anal.describe_quality_assessment()
-    # group_anal = anal.get_df_pre_processing(print=True)
-    # group_anal.to_csv(os.path.join(output, 'analysis', 'biomarkers_proper_scale.csv'))
+    output = os.path.join(source, r'plots\EDA')
+    #
+    # anal = StatAnalysis(input_path=source, output_path=output, data_filename=datafile)
+    # anal.read_dataframe('patient_ID')
 
     # Analysis
     # anal.plot_histograms(covariates=('Average septal curvature [cm-1]',
@@ -645,9 +671,13 @@ if __name__ == '__main__':
     # anal.plot_boxplots(covariates=('Average septal curvature [cm-1]',
     #                                  r'Wall thickness ratio in 4CH view',
     #                                  r'Wall thickness ratio in PLAX view',
-    #                                  r'strain_avc_Basal Septal'))
-    # anal.predict_with_lr()
-    strain_anal = StrainAnalysis(patient_data_path=source, output_path=output,
-                                 curvature_results_path=source, merged_data_filename=datafile)
+    #                                  r'strain_avc_Basal Septal'), hue='SB')
+    # # anal.predict_with_lr()
+
+    # Preprocessing
+    # group_anal = anal.get_df_pre_processing(print=True)
+    # group_anal.to_csv(os.path.join(output, 'analysis', 'biomarkers_proper_scale.csv'))
+    # strain_anal = StrainAnalysis(patient_data_path=source, output_path=output,
+    #                              curvature_results_path=source, merged_data_filename=datafile)
     # strain_anal.plot_curv_vs_wt(save_figures=True)
-    strain_anal.linear_regression_basic_factors(to_file=True, show_plots=True)
+    # strain_anal.linear_regression_basic_factors(to_file=True, show_plots=True)

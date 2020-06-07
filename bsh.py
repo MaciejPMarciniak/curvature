@@ -83,7 +83,7 @@ class Trace:
 
     def _find_ed_and_es_frame(self):
         areas = np.zeros(int(self.number_of_frames/2))  # Search only in the first half for ED
-        for f, frame in enumerate(range(int(self.number_of_frames/2)+1, self.number_of_frames)):
+        for f, frame in enumerate(range(int(self.number_of_frames/2))):
             x, y = self.data[frame, ::2], self.data[frame, 1::2]
             print(f)
             areas[f] = self._plane_area(x, y)
@@ -167,6 +167,7 @@ class Trace:
         self.biomarkers['min_ED'] = curv.loc[self.ed_frame, lower_bound:upper_bound].min()
         self.biomarkers['min_delta_ED'] = self.biomarkers.min_ED - self.biomarkers['min']
         self.biomarkers['avg_basal_ED'] = curv.loc[self.ed_frame, lower_bound:upper_bound].mean()
+        print(self.biomarkers.avg_basal_ED)
         self.biomarkers['trace_length_ED'] = self._trace_length(self.data[self.ed_frame, ::2],
                                                                 self.data[self.ed_frame, 1::2])
         print(self.biomarkers)
@@ -418,19 +419,21 @@ if __name__ == '__main__':
     source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy')
     target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'Output')
 
-    cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
-    # ven = Trace('.', 'FULL_TRACE_FOR_PRES.CSV', interpolate=500)
-    # plot_tool = PlottingCurvature(source='.',
-    #                               output_path='.',
-    #                               ventricle=ven)
-    # plot_tool.plot_all_frames(coloring_scheme='curvature')
+    # cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
+    plot_path = r'C:\Data\ProjectCurvature\Analysis\EndoContours'
+    case = '2DS120_RRC0115_RODRIGUEZ RIOS_26_05_2017_4CH_FULL_TRACE_ENDO_V1_D2_B.CSV'
+    ven = Trace(plot_path, case, interpolate=500)
+    plot_tool = PlottingCurvature(source='.',
+                                  output_path='C:\Code\curvature\images',
+                                  ventricle=ven)
+    plot_tool.plot_all_frames(coloring_scheme='curvature')
     # plot_tool.plot_heatmap()
 
-    cohort.save_curvatures()
-    cohort.save_indices()
-    cohort.plot_curvatures()
+    # cohort.save_curvatures()
+    # cohort.save_indices()
+    # cohort.plot_curvatures()
     # cohort.print_names_and_ids(to_file=True, views=(None,))
-    cohort.save_statistics()
+    # cohort.save_statistics()
 
     # for i, f in enumerate(os.listdir(source)):
     #

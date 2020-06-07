@@ -148,28 +148,29 @@ class PlottingCurvature:
         ax0.set_ylabel('Long axis $[cm]$')
 
         ax1.set_title('Geometric point-to-point curvature')
-        ax1.axhline(y=0, c='k', ls='-.', lw=1)
-        ax1.axvline(x=20, c='k', ls='-.', lw=1)
-        ax1.axvline(x=149, c='k', ls='-.', lw=1)
-        ax1.set_ylim(-2, 2)
+        # ax1.axhline(y=0, c='k', ls='-.', lw=1)
+        ax1.axvline(x=00, c='k', ls='-.', lw=1)
+        ax1.axvline(x=120, c='k', ls='-.', lw=1)
+        ax1.set_ylim(-7, 4)
+        ax1.set_xlim(-10, 140)
 
         # ax1.vlines(self.ed_apex_id+1, 0, max(self.curvature[:, self.ed_apex_id]), color='k', linestyles='-.', lw=1)
         #  Added 1 to ed_apex_id because the plot is moved by one (due to lack of curvature at end points)
-        ax1.set_xlabel('Point number')
-        ax1.set_ylabel('Curvature $[cm^{-1}]$')
+        ax1.set_xlabel('Region of interest')
+        ax1.set_ylabel('Curvature $[dm^{-1}]$')
 
         if coloring_scheme == 'curvature':
             xx, yy, _ = self._get_translated_element(self.ed_frame, self.ed_apex)
             yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[self.ed_frame])
-            ax0.plot(xx, yy, 'k--', lw=3)
-            ax1.plot(curv, '--', c='black', lw=2)
+            # ax0.plot(xx, yy, 'k--', lw=3)
+            # ax1.plot(curv, '--', c='black', lw=2)
 
             xx, yy, _ = self._get_translated_element(self.es_frame, self.ed_apex)
             yy *= -1
             curv = self._append_missing_curvature_values(self.curvature[self.es_frame])
-            ax0.plot(xx, yy, 'k:', lw=3)
-            ax1.plot(curv, ':', c='black', lw=2)
+            # ax0.plot(xx, yy, 'k:', lw=3)
+            ax1.plot(curv, ':', c='black', lw=2, alpha=0)
 
             legend_elements0 = \
                 [Line2D([0], [0], c='k', ls='--', lw=2, label='End diastole'),
@@ -192,29 +193,32 @@ class PlottingCurvature:
                                 Line2D([0], [0], c='k', ls=':', label='Apical point')]
 
         for frame_number in range(self.number_of_frames):
-
+            frame_number = self.ed_frame
             xx, yy, _ = self._get_translated_element(frame_number, self.ed_apex)
             yy *= -1
-            curv = self._append_missing_curvature_values(self.curvature[frame_number])
+            curv = self._append_missing_curvature_values(self.curvature[frame_number])[:130]
             norm_curv = self._append_missing_curvature_values(self.c_normalized[self.ed_frame])
             if coloring_scheme == 'curvature':
-
                 color_tr = cm.seismic(norm_curv)
                 color_tr[:, -1] = 0.9
                 color = cm.seismic(norm_curv)
                 # color[:, -1] = 0.01
                 size = 10
-                ax0.scatter(xx, yy, c=color_tr, edgecolor=color, marker='o', s=size, alpha=0.01)
+                ax0.plot(xx, yy, c='gray', lw=2, alpha=0.005)
+                ax0.scatter(xx, yy, c=color_tr, edgecolor=color, marker='o', s=size, alpha=0.1)
 
                 points = np.array([np.linspace(0, len(curv)-1, len(curv)), curv]).T.reshape(-1, 1, 2)
                 segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                norm = plt.Normalize(-1.5, 1.5)  # Arbitrary values, seem to correspond to the ventricle image
-                lc = LineCollection(segments, cmap='seismic', alpha=0.4, norm=norm)
+                norm = plt.Normalize(-15, 15)  # Arbitrary values, seem to correspond to the ventricle image
+                lc = LineCollection(segments, cmap='seismic', alpha=1, norm=norm)
+                lc2 = LineCollection(segments, color='gray', alpha=0.2, norm=norm)
                 lc.set_array(curv)
                 lc.set_linewidth(2)
-                lc.set_edgecolor(color_tr)
+                lc.set_edgecolor('k')
                 ax1.add_collection(lc)
+                ax1.add_collection(lc2)
                 ext = 'curvature'
+                # break
             else:
                 color_tr = np.array(cm.brg(frame_number/self.number_of_frames)).reshape((1, -1))[0]
                 color_tr[-1] = 0.2
@@ -224,7 +228,12 @@ class PlottingCurvature:
 
         # ax0.scatter(0, 0, c='k', marker='d', s=80, alpha=1, label='Apex at ED')
         ax0.legend(handles=legend_elements0, loc='lower left', title='Cardiac cycle')
-        ax1.legend(handles=legend_elements1, loc='upper right', title='Curvature')
+        # ax1.legend(handles=legend_elements1, loc='upper right', title='Curvature')
+        ax1.set_xticks(ticks=[0, 40, 80, 120])
+        ax1.tick_params(axis='x', which='both',      # both major and minor ticks are affected
+        bottom=False,      # ticks along the bottom edge are off
+        top=False,         # ticks along the top edge are off
+        labelbottom=False) # labels along the bottom edge are off
 
         norm = mpl.colors.Normalize(vmin=-2, vmax=2)
         cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.seismic)
@@ -260,11 +269,11 @@ class PlottingCurvature:
         # plt.axhline(y=149, c='k', ls='-.', lw=1)
         plt.axvline(x=11, c='w', ls=':', lw=2, path_effects=[pef.Stroke(linewidth=3, foreground='k'), pef.Normal()])
         plt.axvline(x=13, c='w', ls=':', lw=2, path_effects=[pef.Stroke(linewidth=3, foreground='k'), pef.Normal()])
-        plt.annotate(xy=(12, 200), xytext=(17, 250), s='End-diastole', c='w', fontsize=14,fontstyle='oblique',
+        plt.annotate(xy=(12, 200), xytext=(17, 250), s='End-diastole', color='w', fontsize=14,fontstyle='oblique',
                      path_effects=[pef.Stroke(linewidth=2, foreground='k'), pef.Normal()],
                      arrowprops={'arrowstyle': mpl.patches.ArrowStyle("->"), 'color': 'w',
                                  'path_effects': [pef.Stroke(linewidth=3, foreground='k'), pef.Normal()], 'lw': 2})
-        plt.annotate(xy=(15, 85), xytext=(20, 90), s='Region of interest', c='w', fontsize=14, fontstyle='oblique',
+        plt.annotate(xy=(15, 85), xytext=(20, 90), s='Region of interest', color='w', fontsize=14, fontstyle='oblique',
                      path_effects=[pef.Stroke(linewidth=2, foreground='k'), pef.Normal()],
                      arrowprops={'arrowstyle': mpl.patches.ArrowStyle("-[", widthB=2.4, lengthB=0.4), 'color': 'w',
                     'path_effects': [pef.Stroke(linewidth=3, foreground='k'), pef.Normal()], 'lw': 2})
@@ -312,7 +321,7 @@ class PlottingDistributions:
 
         if show:
             plt.show()
-        self._save_plot(self.series + '.png', f)
+        self._save_plot(self.series + '.svg', f)
         plt.close()
 
     def plot_multiple_distributions(self, group_by, show=False):
@@ -328,11 +337,11 @@ class PlottingDistributions:
 
         if show:
             plt.show()
-        self._save_plot(plot_name + '.png', _)
+        self._save_plot(plot_name + '.svg', _)
 
     def plot_multiple_boxplots(self, group_by, hue=None, show=False):
 
-        _ = plt.figure(figsize=(8, 2))
+        _ = plt.figure(figsize=(7.5, 2))  # with controls: 7, 3
         _ = sns.boxplot(x=self.series, y=group_by, hue=hue, data=self.df, orient='h')
         _ = plt.gcf()
 
@@ -341,31 +350,33 @@ class PlottingDistributions:
         plot_name = 'boxplot_' + self.series + '_by_' + group_by
 
         plt.xlabel(self.series, fontsize=23)
-        plt.xticks(fontsize=16)
+        plt.xticks(fontsize=17)
         plt.ylabel('')
+        plt.ylim(1.6, -0.6) # change to 2.6 for 3 groups
         plt.yticks([0, 1], ['', ''])
 
         if 'Average septal curvature [cm-1]' in self.series:
-            plt.xlabel('Average septal curvature $[cm^{-1}]$', fontsize=23)
+            plt.xlabel('Average septal curvature $[dm^{-1}]$', fontsize=23)
 
-        if 'SB' in group_by and len(group_by) == 2:
-            plt.yticks([-1, 0, 1, 2], ['', 'HTN no BSH', 'HTN w/BSH', ''], fontsize=16)
+        # if 'SB' in group_by and len(group_by) == 2:
+        #     plt.yticks([0, 1, 2], ['HTN w/BSH', 'HTN no BSH', 'Controls'], fontsize=16)
 
         if 'strain_avc_Basal' in self.series:
             plt.xlabel('Basal septal strain [%]')
+            plt.xticks([-8, -12, -16, -20, -24])
         if 'Wall thickness' in self.series:
             plt.xlim((0.7, 2.2))
 
-        if '80 percentile' in group_by:
-            plt.yticks([0, 1, 2], ['Controls', '0-80th percentile', '80th-100th percentile'])
-        elif 'SB' in group_by and len(group_by) > 2:
-            plt.yticks([0, 1, 2], ['Controls', 'HTN no BSH', 'HTN BSH'])
-            plt.ylabel('')
+        if '85 percentile' in group_by:
+            plt.yticks([0, 1, 2], ['HTN {$P^{ASC}_{>15}$}', 'HTN {$P^{ASC}_{<15}$}', 'Controls'], fontsize=18)
+        elif 'SB' in group_by:
+            # plt.yticks([1, 0, 2], ['HTN w/BSH', 'HTN no BSH', 'Controls'], fontsize=16)  # with controls
+            plt.yticks([0, 1], ['HTN no BSH', 'HTN w/BSH'], fontsize=16)
 
         if hue is not None:
             plot_name += '_on_' + hue
         plt.tight_layout()
-        self._save_plot(plot_name + '.png', _)
+        self._save_plot(plot_name + '.svg', _)
 
     def plot_2_distributions(self, series1, series2, kind, show=False):
 
@@ -395,9 +406,9 @@ class PlottingDistributions:
         # lm.suptitle('Relation between curvature index and wall thickness ratio')
         plt.xlabel(series1, fontsize=27)
         if 'Average septal curvature' in series1:
-            plt.xlabel(r'Average septal curvature $[cm^{-1}]$', fontsize=27)
+            plt.xlabel(r'Average septal curvature $[dm^{-1}]$', fontsize=27)
         if 'Average septal curvature [cm-1]' in series2:
-            plt.ylabel(r'Average septal curvature $[cm^{-1}]$', fontsize=27)
+            plt.ylabel(r'Average septal curvature $[dm^{-1}]$', fontsize=27)
         if 'strain_avc_Basal' in series2:
             plt.ylabel('Basal septal strain [%]', fontsize=30)
         if 'Wall thickness' in series1:
@@ -413,7 +424,7 @@ class PlottingDistributions:
 
         if show:
             plt.show()
-        self._save_plot(series1.replace('/', '_') + '_vs_' + series2 + '_labeled.png', lm)
+        self._save_plot(series1.replace('/', '_') + '_vs_' + series2 + '_labeled.svg', lm)
         plt.clf()
         plt.close()
 
