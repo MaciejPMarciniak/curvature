@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import imageio
-import shutil
 from scipy.spatial.distance import cdist
 from scipy.interpolate import Rbf
 
@@ -114,7 +113,6 @@ class Contour:
                 plt.scatter(sorted_edge, s=1)
                 plt.xlim((0, 256))
                 plt.ylim((-256, 0))
-                self._save_failed_qc_image('Search for new point failed')
                 break
 
             if flag:
@@ -135,34 +133,27 @@ class Contour:
 
     def _fit_border_through_pixels(self, edge=None):
         """
-        Prerequisites to run matlab code from python:
-        download & install Java Runtime Environment
-        download & install Octave
-        add all necessary paths to used files
         :param edge: if provided, given set of points is smoothed (implies that the points are sorted in some way).
         Otherwise one of the attributes is picked, based on the value of self.is_lv_endo:
         True -> lv_endo_sorted_edge
         False -> lv_epi_sorted_edge
         :return: list of points of the smooth contour, with resolution controlled by smoothing_resolution
         """
-        # Add paths with relevant scripts and functions
-        matlab_code_path = os.path.join('C:/', 'Code', 'computationalcardiacanatomy')
-        pth = [x[0] for x in os.walk(os.path.join(matlab_code_path, 'Accesory', 'MeshHandling'))]
-        pth.append(os.path.join(matlab_code_path, 'Personalization', 'CoreFunctions'))
-        pth.append(os.path.join(matlab_code_path, 'Personalization', 'AccessoryFunctions'))
-        pth.append(os.path.join(matlab_code_path, 'Scripts'))
 
         if edge is not None:
             border = edge
         elif self.is_lv_endo:
             border = self.endo_sorted_edge
+            self.smoothing_resolution = 500
+            print('Fitting endocardial contour')
         else:
             border = self.epi_sorted_edge
             self.smoothing_resolution = 2500
+            print('Fitting epicardial contour')
 
-        print('Fitting')
         fitted_points = self.interpolate_trace(border, self.rbf_interpolation)
         print('Fitting complete')
+
         return fitted_points, border
 
     def interpolate_trace(self, trace, interpolation_function):
@@ -183,15 +174,9 @@ class Contour:
 
         # Radial basis function interpolation 'quintic': r**5 where r is the distance from the next point
         # Smoothing is set very high to account for pixel discontinuities of the input data
-
         positions = np.arange(len(x))
-        rbf_x = Rbf(positions, x, smooth=10000, function='quintic')
-        rbf_y = Rbf(positions, y, smooth=10000, function='quintic')
-
-        print('Interpolation')
-        print(len(positions))
-        print(rbf_x.norm)
-        print('------------')
+        rbf_x = Rbf(positions, x, smooth=20000, function='quintic')
+        rbf_y = Rbf(positions, y, smooth=20000, function='quintic')
 
         # Interpolate based on the RBF model
         x_interpolated = rbf_x(interpolation_base)
@@ -203,14 +188,14 @@ class Contour:
 
         try:
             df_image_info = pd.read_csv(self.image_info_file, index_col='id')
+            image_id = os.path.basename(segmentation_file).split('.')[0]
+            self.dimensions = df_image_info.loc[image_id][['voxel_size_width', 'voxel_size_height']].values
         except FileNotFoundError:
             exit('No image information file has been found\n'
                  'Provide the image information file to adjust the contour to the voxel size')
 
-        image_id = os.path.basename(segmentation_file).split('.')[0]
-        self.dimensions = df_image_info.loc[image_id][['voxel_size_width', 'voxel_size_height']].values
-
     def _scale_contours(self, segmentation_file):
+
         # Rescaling to metric units (millimeters)
         self._retrieve_voxel_size(segmentation_file)
         if self.is_lv_endo:
@@ -226,9 +211,6 @@ class Contour:
         self.edge_diff_value = self.mask_values['LV_bp'] if self.is_lv_endo else self.mask_values['LV_myo']
         lv_edge_points = self._correct_indices()
         lv_ordered_contour = self._walk_on_edge(lv_edge_points)
-
-        if len(lv_ordered_contour) < 50:
-            self._save_failed_qc_image('Not enough edge points!', True)
 
         return lv_ordered_contour
 
@@ -259,64 +241,62 @@ class Contour:
             epi_point = self.epi_sorted_edge[bld[point]]
             thickness[point] = np.linalg.norm(np.array(endo_point) - np.array(epi_point))
 
-        basal_thicknesses = thickness[:83]
-        mid_thicknesses = thickness[83:166]
+        thicknesses = self._extract_thickness_parameters(thickness[:83], thickness[83:166])
 
-        max_basal_thickness = np.max(basal_thicknesses)
-        mean_mid_thickness = np.mean(mid_thicknesses)
+        return thicknesses
 
-        return max_basal_thickness, mean_mid_thickness
+    def _extract_thickness_parameters(self, basal_wt, mid_wt):
+
+        thicknesses = dict()
+
+        thicknesses['max_basal_thickness'] = np.max(basal_wt)
+        thicknesses['mean_basal_thickness'] = np.mean(basal_wt)
+        thicknesses['median_basal_thicknesses'] = np.median(basal_wt)
+        thicknesses['max_mid_thickness'] = np.max(mid_wt)
+        thicknesses['mean_mid_thickness'] = np.mean(mid_wt)
+        thicknesses['median_mid_thicknesses'] = np.median(mid_wt)
+
+        return thicknesses
+
     # ---END-WallThicknessMeasurements-----------------------------------------------------------------------------------
 
     # -----MainFunction-------------------------------------------------------------------------------------------------
-    def lv_edges(self, calculate_wt):
+    def lv_edges(self, calculate_wt, plot_intermediate_results=False):
 
+        wall_thicknesses = []
         if self.segmentations_path is not None:
             for seg_file in self.seg_files:
+
                 print(seg_file)
+
                 self.gray_mask = imageio.imread(seg_file)
                 self.is_lv_endo = True
                 self.endo_sorted_edge = self._lv_edges()
                 # self._scale_contours(seg_file)
-                self.plot_mask_with_contour(self.endo_sorted_edge, None)
                 self.endo_sorted_edge, orig = self._fit_border_through_pixels()
-                self.plot_mask_with_contour(self.endo_sorted_edge)
-                # self._save_results(basename(seg_file)[:-4])
 
                 if calculate_wt:
                     self.is_lv_endo = False
                     self.epi_sorted_edge = self._lv_edges()
                     # self._scale_contours(seg_file)
                     self.epi_sorted_edge, orig = self._fit_border_through_pixels()
+
+                    thickness = self._calculate_wt()
+                    thickness['Mask_file'] = seg_file
+                    wall_thicknesses.append(thickness)
+
+                if plot_intermediate_results:
+                    self.plot_mask_with_contour(self.endo_sorted_edge, None)
+                    self.plot_mask_with_contour(self.endo_sorted_edge)
                     self.plot_mask_with_contour(self.endo_sorted_edge, self.epi_sorted_edge)
                     self.plot_mask_with_contour(self.endo_sorted_edge, orig)
-                    bwt, mwt = self._calculate_wt()
+                    if calculate_wt:
+                        self.plot_wt()
 
-                    self.plot_wt()
-                    print('Basal maximum wt: {}, mid mean wt: {}'.format(bwt, mwt))
+        df_wt = pd.DataFrame(wall_thicknesses)
+        df_wt.set_index('Mask_file', inplace=True)
+        df_wt.to_csv(os.path.join(self.output_path, 'wall_thicknesses.csv'))
 
-        elif self.segmentation_cycle is not None:
-
-            print('length of the cycle: {}'.format(len(self.segmentation_cycle)))
-            cycle_coords = []
-            self.endo_sorted_edge = self._lv_edges()
-            prev_cont = self.endo_sorted_edge
-
-            failed = 0
-            for seg_img_i, seg_img in enumerate(self.segmentation_cycle):
-                self.endo_sorted_edge = self._lv_edges()
-                self.img_index = seg_img_i
-
-                if self._check_contour_quality(np.array(seg_img), prev_cont):
-                    cycle_coords.append(self._fit_border_through_pixels())
-                    prev_cont = self.endo_sorted_edge
-                else:
-                    failed += 1
-
-            if not failed / len(self.segmentation_cycle) > 0.35:
-                self.all_cycle = cycle_coords
-            else:
-                self.all_cycle = None
     # ---ENDMainFunction------------------------------------------------------------------------------------------------
 
     # -----Saving-------------------------------------------------------------------------------------------------------
@@ -365,112 +345,12 @@ class Contour:
         plt.clf()
     # ---END Plotting---------------------------------------------------------------------------------------------------
 
-    # -----QualityChecks------------------------------------------------------------------------------------------------
-    def _check_contour_quality(self, mask, prev_cont):
-
-        values, counts = np.unique(mask, return_counts=True)  # returned array is sorted
-
-        tmp_smooth = self._fit_border_through_pixels(True, len(self.endo_sorted_edge))
-        # se_x = np.array([x[0] for x in self.endo_sorted_edge])
-        # se_y = np.array([y[1] for y in self.endo_sorted_edge])
-        # se_x2 = np.array([x[0] for x in prev_cont])
-        # se_y2 = np.array([y[1] for y in prev_cont])
-        # plt.scatter(se_x, -se_y)
-        # plt.scatter(se_x2, -se_y2, marker='d')
-        # plt.imshow(mask, cmap='gray')
-        # print('a')
-        # plt.show()
-        # print('b')
-
-        positions = np.where(mask == values[1])
-        max_bp_y, max_bp_x = [np.max(p) for p in positions]
-        max_bp_y *= self.dimensions[1]  # scaling for compatibility with contours
-        max_bp_x *= self.dimensions[0]
-        min_bp_y, min_bp_x = [np.min(p) for p in positions]
-        min_bp_y *= self.dimensions[1]
-        min_bp_x *= self.dimensions[0]
-        max_cont_y = np.max([-c[1] for c in tmp_smooth])
-        min_cont_y = np.min([-c[1] for c in tmp_smooth])
-        max_cont_x = np.max([c[0] for c in tmp_smooth])
-        min_cont_x = np.min([c[0] for c in tmp_smooth])
-        percent_prev_contour_diff = np.abs(len(self.endo_sorted_edge) - len(prev_cont)) / len(prev_cont)
-        if percent_prev_contour_diff > 0.25:  # 25% of previous contour
-            print('percent_prev_contour_diff: {}'.format(percent_prev_contour_diff))
-            # self._save_failed_qc_image('percent_prev_cont {}'.format(percent_prev_contour_diff), mask)
-            return False
-
-        if np.linalg.norm(np.array(tmp_smooth[0]) - np.array(tmp_smooth[-1])) < 10:
-            print('tmp_smooth {}'.format(tmp_smooth))
-            print(np.linalg.norm(np.array(tmp_smooth) - np.array(tmp_smooth)))
-            # self._save_failed_qc_image('Contour covering entire bp', mask)
-            return False
-
-        if max_bp_y < max_cont_y - 5:
-            print('Contour over bp')
-            # self._save_failed_qc_image('Contour over bp', mask)
-            return False
-
-        diff_max_y = np.abs(max_bp_y - max_cont_y)
-        if diff_max_y > 10:
-            print('Diff_max_bp_y_max_cont_y {}'.format(diff_max_y))
-            # self._save_failed_qc_image('Diff_max_bp_y_max_cont_y {}'.format(diff_max_y), mask)
-            return False
-
-        diff_min_y = np.abs(min_bp_y - min_cont_y)
-        if diff_min_y > 15:
-            print('Diff_min_bp_y_min_cont_y {}'.format(diff_min_y))
-            # self._save_failed_qc_image('Diff_min_bp_y_min_cont_y {}'.format(diff_min_y), mask)
-            return False
-
-        diff_max_x = np.abs(max_bp_x - max_cont_x)
-        if diff_max_x > 15:
-            print('Diff_max_bp_x_max_cont_x {}'.format(diff_max_x))
-            # self._save_failed_qc_image('Diff_max_bp_x_max_cont_x {}'.format(diff_max_x), mask)
-            return False
-
-        diff_min_x = np.abs(min_bp_x - min_cont_x)
-        if diff_min_x > 15:
-            print('Diff_min_bp_x_min_cont_x {}'.format(diff_min_x))
-            # self._save_failed_qc_image('Diff_min_bp_x_min_cont_x {}'.format(diff_min_x), mask)
-            return False
-
-        return True
-
-    def _save_failed_qc_image(self, plot_title, mask=False):
-        if mask is not None:
-            plt.imshow(self.gray_mask)
-        plt.plot([x[0] for x in self.endo_sorted_edge], [-y[1] for y in self.endo_sorted_edge], 'r')
-        plt.title(plot_title)
-
-        case_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
-                                                self.s_sopid.replace('.', '_')))
-        print(case_dir)
-        shutil.rmtree('{}/*'.format(case_dir), ignore_errors=True)
-        failed_dir = check_directory(os.path.join(self.output_path, 'failed_qc',
-                                                  self.s_sopid.replace('.', '_'), str(self.cycle_index)))
-        plt.savefig(os.path.join(failed_dir, '{}_{}_{}.png'.format(self.img_index, plot_title,
-                                                                   self.cycle_index)))
-        plt.close()
-# ---END QualityChecks--------------------------------------------------------------------------------------------------
-
 
 if __name__ == '__main__':
 
-    # parser = argparse.ArgumentParser(description='Create contours to input into the curvature model')
-    # parser.add_argument('-s', '--segmentations', help='Segmentation results from NTNU model', required=True)
-    # parser.add_argument('-o', '--output_path', help='Directory where output will be stored', required=True)
-    # args = parser.parse_args()
-
-    # LINUX
-    # segmentations_path = '/home/mat/Pictures/LAX_UKBB_corr'
-    # output_path = '/home/mat/Pictures/LAX_UKBB_corr/contours'
-    # WINDOWS
-    segmentations_path = 'C:\Data\ProjectCurvature\LAX_UKBB\corrected'
+    segmentations_path = r'C:\Data\ProjectCurvature\LAX_UKBB\corrected\few_cases'
     output_path = 'C:\Data\ProjectCurvature\LAX_UKBB\corrected\contours'
     image_info_file = 'C:\Data\ProjectCurvature\LAX_UKBB\Images_info\Image_details.csv'
 
-    # cont = Contour(os.getcwd(), os.getcwd(), dimensions=(1, 1))
     cont = Contour(segmentations_path, output_path, image_info_file=image_info_file)
-    cont.lv_edges(calculate_wt=True)
-    print('plsopkfoijqw')
-    cont.plot_wt()
+    cont.lv_edges(calculate_wt=True,  plot_intermediate_results=True)

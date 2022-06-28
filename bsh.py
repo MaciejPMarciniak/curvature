@@ -6,7 +6,7 @@ import csv
 import matplotlib.pyplot as plt
 
 from itertools import combinations
-from scipy.interpolate import Rbf
+from scipy.interpolate import Rbf, interp1d, pchip_interpolate, CubicHermiteSpline
 from curvature import GradientCurvature
 from LV_edgedetection import check_directory
 from plotting import PlottingCurvature, PlottingDistributions
@@ -85,7 +85,6 @@ class Trace:
         areas = np.zeros(int(self.number_of_frames/2))  # Search only in the first half for ED
         for f, frame in enumerate(range(int(self.number_of_frames/2))):
             x, y = self.data[frame, ::2], self.data[frame, 1::2]
-            print(f)
             areas[f] = self._plane_area(x, y)
         self.es_frame, self.ed_frame = np.argmin(areas), np.argmax(areas)
 
@@ -103,11 +102,18 @@ class Trace:
                 interpolation_target_n = np.linspace(0, self.data.shape[1]/2 - 1, trace_points_n)
                 # Radial basis function interpolation 'quintic': r**5 where r is the distance from the next point
                 # Smoothing is set to length of the input data
-                rbf_x = Rbf(positions, self.data[trace, ::2], smooth=len(positions), function='quintic')
-                rbf_y = Rbf(positions, self.data[trace, 1::2], smooth=len(positions), function='quintic')
-                # Interpolate based on the RBF model
+                rbf_x = Rbf(positions, self.data[trace, ::2], smooth=1, function='quintic')
+                rbf_y = Rbf(positions, self.data[trace, 1::2], smooth=1, function='quintic')
+
+                # rbf_x = interp1d(positions, self.data[trace, ::2], 'cubic')
+                # rbf_y = interp1d(positions, self.data[trace, 1::2], 'cubic')
+                #
+                # # Interpolate based on the RBF model
                 point_interpolated[trace, ::2] = rbf_x(interpolation_target_n)
                 point_interpolated[trace, 1::2] = rbf_y(interpolation_target_n)
+
+                # point_interpolated[trace, ::2] = pchip_interpolate(positions, self.data[trace, ::2], interpolation_target_n)
+                # point_interpolated[trace, 1::2] = pchip_interpolate(positions, self.data[trace, 1::2], interpolation_target_n)
 
                 # a = x[0] for x in self.data[trace])
                 # plt.plot(self.data[trace][::2], -self.data[trace][1::2], '.-')
@@ -167,10 +173,8 @@ class Trace:
         self.biomarkers['min_ED'] = curv.loc[self.ed_frame, lower_bound:upper_bound].min()
         self.biomarkers['min_delta_ED'] = self.biomarkers.min_ED - self.biomarkers['min']
         self.biomarkers['avg_basal_ED'] = curv.loc[self.ed_frame, lower_bound:upper_bound].mean()
-        print(self.biomarkers.avg_basal_ED)
         self.biomarkers['trace_length_ED'] = self._trace_length(self.data[self.ed_frame, ::2],
                                                                 self.data[self.ed_frame, 1::2])
-        print(self.biomarkers)
         return self.biomarkers
 
 
@@ -415,18 +419,18 @@ class Cohort:
 if __name__ == '__main__':
     # ------------------------------------------------------------------------------------------------------------------
     # Cohort(windows)
-    patient_data_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'PatientData')
-    source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy')
-    target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'Output')
+    # patient_data_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'PatientData')
+    # source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy')
+    # target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'Output')
 
     # cohort = Cohort(source_path=source, view='4C', output_path=target, interpolate_traces=500)
-    plot_path = r'C:\Data\ProjectCurvature\Analysis\EndoContours'
-    case = '2DS120_RRC0115_RODRIGUEZ RIOS_26_05_2017_4CH_FULL_TRACE_ENDO_V1_D2_B.CSV'
-    ven = Trace(plot_path, case, interpolate=500)
-    plot_tool = PlottingCurvature(source='.',
-                                  output_path='C:\Code\curvature\images',
-                                  ventricle=ven)
-    plot_tool.plot_all_frames(coloring_scheme='curvature')
+    # plot_path = r'C:\Data\ProjectCurvature\Analysis\EndoContours'
+    # case = '2DS120_RRC0115_RODRIGUEZ RIOS_26_05_2017_4CH_FULL_TRACE_ENDO_V1_D2_B.CSV'
+    # ven = Trace(plot_path, case, interpolate=500)
+    # plot_tool = PlottingCurvature(source='.',
+    #                               output_path='C:\Code\curvature\images',
+    #                               ventricle=ven)
+    # plot_tool.plot_all_frames(coloring_scheme='curvature')
     # plot_tool.plot_heatmap()
 
     # cohort.save_curvatures()
@@ -458,6 +462,8 @@ if __name__ == '__main__':
     # cohort.print_names_and_ids(to_file=True)
     #
     # _view = '4C'
+    # source = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy')
+    # target = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'Output')
     # case_name = os.path.join(source, _view, 'AFI0442_4C.CSV')
     # ven = Trace(case_name, view=_view)
     # plot_tool = PlottingCurvature(source=source, output_path=target_path, ventricle=ven)
@@ -465,4 +471,27 @@ if __name__ == '__main__':
     #
     # print(ven.number_of_points)
     # print(ven.number_of_frames)
+    plot_path = r'C:\Data\ProjectCurvature\Analysis\EndoContours\figure_cases'
+    cases = [ # '2DS120_AMMD0450_ALBANELL MESTRES_03_10_2018_4CH_FULL_TRACE_ENDO_V1_D2_NB.CSV',
+             # '2DS120_ARE0402_ALMARAZ ROCH_13_07_2018_4CH_FULL_TRACE_ENDO_V1_D1_NB.CSV',
+             # '2DS120_MRL0456_MARTIN RODRIGUEZ_07_11_2018_4CH_FULL_TRACE_ENDO_V1_D1_NB.CSV',  # lowest
+             '2DS120_PMMA0269_PEINADO MORALES_22_09_2017_4CH_FULL_TRACE_ENDO_V1_D3_B.CSV',
+             # '2DS120_RRA0308_ROSSELLO RAMISA_25_10_2017_4CH_FULL_TRACE_ENDO_V1_D1_NB.CSV'
+             ]
+    for case in cases:
+        ven = Trace(plot_path, case, interpolate=None)
+
+        fig, (ax0, ax1) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [3, 5]}, figsize=(14, 6))
+        plot_tool = PlottingCurvature(source='.',
+                                      output_path=r'C:\Data\ProjectCurvature\Analysis\EndoContours\figure_cases',
+                                      ventricle=ven)
+        plot_tool.plot_all_frames(fig, ax0, ax1)
+        ven = Trace(plot_path, case, interpolate=500)
+        plot_tool = PlottingCurvature(source='.',
+                                      output_path=r'C:\Data\ProjectCurvature\Analysis\EndoContours\figure_cases',
+                                      ventricle=ven)
+        plot_tool.plot_all_frames(fig, ax0, ax1, plot_number=2)
+        plt.show()
+
+        # plot_tool.plot_heatmap()
     # ------------------------------------------------------------------------------------------------------------------

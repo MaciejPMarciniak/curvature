@@ -141,8 +141,8 @@ class StatAnalysis:
 
     def plot_histograms(self, covariates=('avg_min_basal_curv',)):
         for cov in covariates:
-            sns.distplot(self.df.loc[self.df[r'85 percentile curv'] < 3][cov], kde=False, rug=True, color='r', bins=12)
-            sns.distplot(self.df.loc[self.df[r'85 percentile curv'] == 3][cov], kde=False, rug=True, color='g', bins=6)
+            sns.distplot(self.df.loc[self.df[r'85 percentile curv'] < 3][cov], kde=True, rug=True, color='r', bins=12)
+            sns.distplot(self.df.loc[self.df[r'85 percentile curv'] == 3][cov], kde=True, rug=True, color='g', bins=12)
             # plt.legend()
 
             if 'Average septal curvature' in cov:
@@ -610,19 +610,19 @@ if __name__ == '__main__':
 
     # VARIABILITY ANALYSIS
     #
-    measurements_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'StudyResults')
-    output_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'StudyResults')
-
-    measurements_filename = 'InterObserverStudy.xlsx'
-
-    var = VariabilityAnalysis(measurements_path, output_path, measurements_filename)
+    # measurements_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'StudyResults')
+    # output_path = os.path.join('C:/', 'Data', 'ProjectCurvature', 'InterObserverStudy', 'StudyResults')
+    #
+    # measurements_filename = 'InterObserverStudy.xlsx'
+    #
+    # var = VariabilityAnalysis(measurements_path, output_path, measurements_filename)
     # var._test_sem_calculations()
     # ranges = pd.DataFrame()
-    for o2 in ['F2', 'M', 'J']:
-        view = ''
-        segment = ''
-        df_range = var.calculate_sem_single_index(o2=o2)
-        var.bland_altman_plot_single_index(o2=o2)
+    # for o2 in ['F2', 'M', 'J']:
+    #     view = ''
+    #     segment = ''
+    #     df_range = var.calculate_sem_single_index(o2=o2)
+    #     var.bland_altman_plot_single_index(o2=o2)
     #     ranges = pd.concat((ranges, df_range), axis=0)
     #     for view in ['PLAX', '4C']:
     #         var.bland_altman_plot_multi_index(o2=o2, view=view, segment='ratio')
@@ -632,14 +632,14 @@ if __name__ == '__main__':
     # print(ranges)
     # STRAIN ANALYSIS
     #
-    patient_data_path = os.path.join('C:\Data\ProjectCurvature\Analysis\Output_HTN\Statistics')
-    curvature_results = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output')
-    output = check_directory(os.path.join('C:\Data\ProjectCurvature\Analysis\Output_HTN\Statistics\plots', 'EDA'))
+    # patient_data_path = os.path.join('C:\Data\ProjectCurvature\Analysis\Output_HTN\Statistics')
+    # curvature_results = os.path.join('C:/', 'Data', 'ProjectCurvature', 'Analysis', 'Output')
+    # output = check_directory(os.path.join('C:\Data\ProjectCurvature\Analysis\Output_HTN\Statistics\plots', 'EDA'))
     # measurements = 'AduHeart_Measurements.xlsx'
     # twodstrain = 'AduHeart_Strain_MW.xlsx'
     # curvature = 'master_table_full.csv'
     # patient_info = 'AduHeart_PatientData_Full.xlsx'
-    merged_data = 'Measurements_and_2DstrainPlotting.csv'
+    # merged_data = 'Measurements_and_2DstrainPlotting.csv'
     #
     # anal = StrainAnalysis(patient_data_path, curvature_results, output, merged_data_filename=merged_data)
 
@@ -652,18 +652,18 @@ if __name__ == '__main__':
 
     source = os.path.join('C:\Data\ProjectCurvature\Analysis\Output_HTN\Statistics')
     # datafile = 'Measurements_and_2DstrainPlottingAll.csv'
-    datafile = 'Measurements_and_2DstrainPlotting.csv'
+    datafile = 'Measurements_and_2DstrainPlottingAll.csv'
 
 
-    output = os.path.join(source, r'plots\EDA')
+    output = r'C:\Data'
     #
-    # anal = StatAnalysis(input_path=source, output_path=output, data_filename=datafile)
-    # anal.read_dataframe('patient_ID')
+    anal = StatAnalysis(input_path=source, output_path=output, data_filename=datafile)
+    anal.read_dataframe('patient_ID')
 
     # Analysis
-    # anal.plot_histograms(covariates=('Average septal curvature [cm-1]',
-    #                                  r'Wall thickness ratio in 4CH view',
-    #                                  r'Wall thickness ratio in PLAX view'))
+    anal.plot_histograms(covariates=('Average septal curvature [cm-1]',
+                                     r'Wall thickness ratio in 4CH view',
+                                     r'Wall thickness ratio in PLAX view'))
     # anal.plot_relations(pairs=((r'Wall thickness ratio in PLAX view', r'Average septal curvature [cm-1]'),
     # (r'Wall thickness ratio in 4CH view', r'Average septal curvature [cm-1]')))
     # anal.perform_analysis(covariates=('Average septal curvature [cm-1]', r'Wall thickness ratio in 4CH view',
