@@ -33,4 +33,8 @@ Examples of differences in septal curvature among 3 patients: healthy, hypertens
 # Credits
 Please cite the following publication:
 
-Marciniak M, Gilbert A, Loncaric F, Fernandes JF, Bijnens B, Sitges M, King A, Crispi F, Lamata P. Septal curvature as a robust and reproducible marker for basal septal hypertrophy. J Hypertens. 2021 Jul 1;39(7):1421-1428. doi: 10.1097/HJH.0000000000002813. PMID: 33534345; PMCID: PMC8183485.
+Marciniak M, Gilbert A, Loncaric F, Fernandes JF, Bijnens B, Sitges M, King A, Crispi F, Lamata P.
+
+Septal curvature as a robust and reproducible marker for basal septal hypertrophy.
+
+J Hypertens. 2021 Jul 1;39(7):1421-1428. doi: 10.1097/HJH.0000000000002813. PMID: 33534345; PMCID: PMC8183485.
