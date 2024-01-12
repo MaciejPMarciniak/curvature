@@ -1,0 +1,21 @@
+{
+    "cSpell.words": [
+        "arange",
+        "argmin",
+        "cdist",
+        "cmap",
+        "endo",
+        "epicardial",
+        "imageio",
+        "imread",
+        "imshow",
+        "loguru",
+        "NTNU",
+        "savetxt",
+        "segmentations",
+        "Segmentations",
+        "voxel",
+        "xlim",
+        "ylim"
+    ]
+}
