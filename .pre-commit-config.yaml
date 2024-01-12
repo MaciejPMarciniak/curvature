@@ -1,0 +1,62 @@
+# Python pre-commit functions
+
+# For Python version 3.11
+
+# Contents:
+# pre-commit (details: https://pre-commit.com/hooks.html)
+# black (details: https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html)
+# mypy (details: https://mypy.readthedocs.io/en/stable/config_file.html)
+# pylint (details: https://pylint.pycqa.org/en/latest/user_guide/configuration/all-options.html)
+# isort (details: https://pycqa.github.io/isort/docs/configuration/pre-commit.html)
+
+repos:
+  # -----PRE-COMMIT---------------------------------------------------------------
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]
+      - id: check-ast
+      - id: check-case-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: debug-statements
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: name-tests-test
+        args: [--django]
+      - id: trailing-whitespace
+
+  # -----ISORT--------------------------------------------------------------------
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        name: isort (python)
+
+  # -----BLACK--------------------------------------------------------------------
+
+  - repo: https://github.com/psf/black
+    rev: 23.10.0
+    hooks:
+      - id: black
+
+  # -----MYPY---------------------------------------------------------------------
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.6.1
+    hooks:
+      - id: mypy
+        additional_dependencies: ["types-PyYAML"]
+
+  # -----PYLINT-------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: poetry run pylint
+        language: system
+        types: [python]
