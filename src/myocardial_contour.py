@@ -44,13 +44,11 @@ class MyocardialContour:
         """
         self._reindex_atrium()
 
-        endo_contour = self._generate_contour(component="LV_bp")
-        self.endocardial_contour = self._interpolate_contour(endo_contour)
+        endo_edge = self._generate_contour(component="LV_bp")
+        self.endocardial_contour = self._interpolate_contour(endo_edge)
 
-        epi_contour = self._generate_contour(component="LV_myo")
-        self.epicardial_contour = self._interpolate_contour(
-            epi_contour, interpolation_resolution=2500
-        )
+        epi_edge = self._generate_contour(component="LV_myo")
+        self.epicardial_contour = self._interpolate_contour(epi_edge, interpolation_resolution=2500)
 
         if plot_contours:
             self.plot_mask_with_contour(self.endocardial_contour, self.epicardial_contour)

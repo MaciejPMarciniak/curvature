@@ -12,7 +12,7 @@ methods can be applied to any traces of the left ventricle.
  Localized basal septal hypertrophy (BSH) is a known marker of a more advanced impact of afterload on cardiac function
  in hypertension. There is variability in criteria used for defining BSH, mainly based on ratios of multiple septal wall
  thickness measurements with high inter-observer variability. The aim is to investigate septal curvature as a novel,
- semiautomated method for better recognition of patients with BSH.
+ semi-automated method for better recognition of patients with BSH.
 
 # Screenshots
 Examples of differences in septal curvature among 3 patients: healthy, hypertensive and hypertensive with septal bulge:
@@ -26,9 +26,7 @@ Examples of differences in septal curvature among 3 patients: healthy, hypertens
 
 ![curvature](images/Heatmap.png "Segment vs time heatmap of curvature")
 
----
 ![MeanCurves](images/Mean_curvature.png "Mean curvature of the LV over the cardiac cycle")
----
 
 # Credits
 Please cite the following publication:
