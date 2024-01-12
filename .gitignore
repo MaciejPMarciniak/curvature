@@ -1,5 +1,8 @@
-# User-specific stuff
+# JetBrains IDE
 /.idea
+
+# VS Code
+/.vscode
 
 # File-based project format:
 *.iws
@@ -14,7 +17,6 @@ dist/
 __pycache__/
 .mypy_cache/
 .pytest_cache/
-.idea/*
 
 # Compiled Java class files
 *.class
@@ -32,11 +34,7 @@ __pycache__/
 target/
 dist/
 
-# JetBrains IDE
-.idea/
 
-# VS Code
-.vscode
 
 # Unit test reports
 TEST*.xml
@@ -63,4 +61,4 @@ Thumbs.db
 
 # directories
 */export/*
-legacy/*
+/legacy*
