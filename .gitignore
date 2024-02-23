@@ -62,3 +62,4 @@ Thumbs.db
 # directories
 */export/*
 /legacy*
+/mesh*
