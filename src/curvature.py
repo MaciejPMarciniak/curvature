@@ -7,7 +7,9 @@ from typing import Callable
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
-from scipy.interpolate import Rbf, interp1d, pchip_interpolate
+from scipy.interpolate import Rbf
+
+import curvature_plotting
 
 
 class Curvature:
@@ -74,7 +76,7 @@ class GradientCurvature:
     """Class for calculating the gradient curvature"""
 
     def __init__(
-        self, trace: list[NDArray], interpolation_function: Callable, plot_derivatives: bool = True
+        self, trace: list[NDArray], interpolation_function: Callable, plot_derivatives: bool = False
     ) -> None:
         self.trace = trace
         self.plot_derivatives = plot_derivatives
@@ -105,12 +107,10 @@ class GradientCurvature:
             plt.title("Function")
 
             plt.subplot(412)
-            # plt.plot(x_prime, label='x\'')
             plt.plot(y_prime, label="y'")
             plt.title("First spatial derivative")
             plt.legend()
             plt.subplot(413)
-            # plt.plot(x_bis, label='x\'\'')
             plt.plot(y_bis, label="y''")
             plt.title("Second spatial derivative")
             plt.legend()
@@ -210,105 +210,23 @@ def rbf_interpolation(
     return x_interpolated, y_interpolated
 
 
-def interp1d_interpolation(
-    x: NDArray,
-    y: NDArray,
-    positions: NDArray,
-    interpolation_base: NDArray,
-    interpolation_kind: str = "cubic",
-) -> tuple[NDArray, ...]:
-    """Polynomial interpolation.
-    Args:
-        x:
-            Horizontal coordinates.
-        y:
-            Vertical coordinates.
-        positions:
-            Ordered numbers used for interpolation model generation.
-        interpolation_base:
-            The desired interpolation density.
-        interpolation_kind:
-            The degree of the interpolation function.
-
-    Returns:
-        Coordinates interpolated in both dimensions.
-    """
-    interp1d_x = interp1d(positions, x, kind=interpolation_kind)
-    interp1d_y = interp1d(positions, y, kind=interpolation_kind)
-
-    x_interpolated = interp1d_x(interpolation_base)
-    y_interpolated = interp1d_y(interpolation_base)
-
-    return x_interpolated, y_interpolated
-
-
-def pchip_interpolation(
-    x: NDArray,
-    y: NDArray,
-    positions: NDArray,
-    interpolation_base: NDArray,
-) -> tuple[NDArray, ...]:
-    """Cubic Hermite interpolation.
-
-    Args:
-        x:
-            Horizontal coordinates.
-        y:
-            Vertical coordinates.
-        positions:
-            Ordered numbers used for interpolation model generation.
-        interpolation_base:
-            The desired interpolation density.
-        interpolation_kind:
-            The degree of the interpolation function.
-
-    Returns:
-        Coordinates interpolated in both dimensions.
-    """
-    pchip_x = pchip_interpolate(positions, x, interpolation_base)
-    pchip_y = pchip_interpolate(positions, y, interpolation_base)
-
-    return pchip_x, pchip_y
-
-
 if __name__ == "__main__":
     k = 20  # Resolution
     independent = np.linspace(-5, 5, k + 1)
 
-    # ____Testing functions____
+    # ____Testing functions___
     # y = sigmoid(x**3)
-    dependent = independent**2
-    # y = np.sin(x)
-    # y = (np.sin(x**2))
+    # dependent = independent**2
+    dependent = np.sin(independent)
+    # dependent = (np.sin(independent**2))
 
     ab = list(zip(independent, dependent))  # list of points in 2D space
 
-    plt.scatter(independent, dependent)
-    plt.show()
     ifunc = rbf_interpolation
     curv1 = GradientCurvature(trace=ab, interpolation_function=ifunc)
     start = time.time()
     curv1.calculate_curvature()
     end = time.time()
     print(f"Gradient curvature execution time: {end - start}")
-
-    curv2 = Curvature(trace=ab, interpolation_function=ifunc)
-    start = time.time()
-    curv2.calculate_curvature()
-    end = time.time()
-    print(f"Menger curvature execution time: {end - start}")
-
-    print(k)
-    print("Menger")
-    print(f"Maximum curvature: {max(curv2.curvature)}")
-    print(f"Minimum curvature: {min(curv2.curvature)}")
-
-    print("Gradient")
-    print(f"Maximum curvature: {np.max(curv1.curvature)}")
-    print(f"Minimum curvature: {np.min(curv1.curvature)}")
-
-    plt.subplot(414)
-    plt.plot(range(2, len(curv2.curvature) + 2), curv2.curvature, "d-", label="Menger curvature")
-    plt.plot(curv1.curvature, "g.-", label="Gradient curvature")
-    plt.legend()
-    plt.show()
+    curv_plot = curvature_plotting.PlottingCurvature(curv1.x_trace, curv1.y_trace, curv1.curvature)
+    curv_plot.plot_contour_with_curvature()
