@@ -14,7 +14,9 @@ class PlottingCurvature:
         self.x = contour_points_x
         self.y = contour_points_y
         self.curvature_values = curvature_values
-        self.curvature_norm = plt.Normalize(-0.125, 0.125)
+        self.curvature_norm = plt.Normalize(
+            -0.125, 0.125
+        )  # Empirically found limits for curvature values when measured in dm⁻1.
         self._center_contour()
 
     def plot_contour_with_curvature(self) -> None:
@@ -38,8 +40,8 @@ class PlottingCurvature:
         self.y -= np.mean(self.y)
 
     def _generate_contour_ax(self, contour_ax: plt.Axes) -> plt.Axes:
-        contour_ax.set_xlim(-45, 45)
-        contour_ax.set_ylim(-45, 45)
+        contour_ax.set_xlim(-45, 45)  # Short axis limits
+        contour_ax.set_ylim(-45, 45)  # Long axis limits
         contour_ax.set_xlabel("Short axis")
         contour_ax.set_ylabel("Long axis")
         contour_ax.set_title("Endocardial contour")
@@ -51,7 +53,7 @@ class PlottingCurvature:
         curvature_ax.set_title("Mean geometric point-to-point curvature")
         curvature_ax.axhline(y=0, c="k", ls="-.", lw=2)
         curvature_ax.set_xlim(-1, len(self.curvature_values) + 1)
-        curvature_ax.set_ylim(-0.07, 0.13)
+        curvature_ax.set_ylim(-0.07, 0.13)  # Typical range of curvature values
         curvature_ax.set_xlabel("Point number")
         curvature_ax.set_ylabel("Curvature $[dm^{-1}]$")
         curvature_ax.legend(
