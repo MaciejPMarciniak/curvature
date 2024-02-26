@@ -66,7 +66,7 @@ class PlottingCurvature:
 
     def _get_curvature_plot(self) -> lc.LineCollection:
         points = np.array([np.arange(len(self.curvature_values)), self.curvature_values]).T.reshape(
-            1, 2
+            (-1, 1, 2)
         )
         segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
